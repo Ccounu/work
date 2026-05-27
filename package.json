@@ -1,0 +1,35 @@
+{
+  "name": "ai-mentalhealthassistant",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix",
+    "format": "prettier --write ."
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "@microsoft/fetch-event-source": "^2.0.1",
+    "@wangeditor/editor": "^5.1.23",
+    "@wangeditor/editor-for-vue": "^5.1.12",
+    "axios": "^1.15.2",
+    "echarts": "^6.0.0",
+    "element-plus": "^2.13.7",
+    "pinia": "^3.0.4",
+    "sass": "^1.97.2",
+    "vue": "^3.5.32",
+    "vue-router": "^4.6.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.6",
+    "eslint": "^10.2.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-vue": "^10.8.0",
+    "prettier": "^3.8.3",
+    "vite": "^8.0.9",
+    "vue-eslint-parser": "^10.4.0"
+  }
+}
