@@ -1,0 +1,19 @@
+[Unit]
+Description=Railway Ticket Risk Backend
+After=network.target mysql.service redis-server.service
+Wants=mysql.service redis-server.service
+
+[Service]
+Type=simple
+User=YOUR_LINUX_USER
+WorkingDirectory=/opt/railway/app
+EnvironmentFile=/opt/railway/secrets/railway.env
+ExecStart=/usr/bin/java -Xms128m -Xmx256m -jar /opt/railway/app/app.jar
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/opt/railway/logs/backend/app.log
+StandardError=append:/opt/railway/logs/backend/app.log
+
+[Install]
+WantedBy=multi-user.target

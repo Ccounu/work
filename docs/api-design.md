@@ -1,0 +1,998 @@
+# API 设计
+
+## 健康检查
+
+```http
+GET /api/health
+```
+
+响应：
+
+```json
+{
+  "status": "UP",
+  "service": "railway-ticket-risk-system"
+}
+```
+
+## OpenAPI 文档
+
+```http
+GET /v3/api-docs
+GET /swagger-ui/index.html
+```
+
+OpenAPI JSON 和 Swagger UI 允许匿名访问。业务接口仍按原权限规则执行；在 Swagger UI 中调用受保护接口时，先调用 `POST /api/auth/login` 获取 JWT，然后点击 Authorize，填写：
+
+```text
+Bearer {token}
+```
+
+## 查询车站
+
+```http
+GET /api/stations
+```
+
+## 登录
+
+```http
+POST /api/auth/login
+Content-Type: application/json
+
+{
+  "username": "risk",
+  "password": "risk123"
+}
+```
+
+响应：
+
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VybmFtZSI6InJpc2sifQ.signature",
+  "username": "risk",
+  "displayName": "风控专员",
+  "role": "RISK_OFFICER",
+  "expiresAt": 1770000000
+}
+```
+
+## 当前登录用户
+
+```http
+GET /api/auth/me
+Authorization: Bearer {token}
+```
+
+系统使用 Spring Security + JWT + BCrypt 实现认证授权。受保护接口统一使用 `Authorization: Bearer {token}` 传递登录令牌。缺少令牌或令牌无效返回 401，角色不足返回 403。
+
+## 乘客端接口
+
+乘客端接口统一使用 `USER` 角色访问，路径前缀为 `/api/passenger`。乘客只能查询和操作当前登录用户自己的订单、支付流水和退款流水。
+
+### 当前乘客概览
+
+```http
+GET /api/passenger/summary
+Authorization: Bearer {USER token}
+```
+
+响应包含待支付、已支付、已关闭、已退票订单数量，支付流水数量、退款流水数量、最近订单和即将出行订单。
+
+### 我的订单
+
+```http
+GET /api/passenger/orders?status=PAID&page=0&size=10
+Authorization: Bearer {USER token}
+```
+
+`status` 可选，取值同订单状态。服务端固定使用 JWT 中的 `userId` 查询，不接受前端覆盖用户 ID。
+
+### 乘客下单
+
+```http
+POST /api/passenger/orders
+Authorization: Bearer {USER token}
+Content-Type: application/json
+
+{
+  "requestId": "passenger-order-001",
+  "trainId": 1,
+  "inventoryId": 1,
+  "passengerName": "张三",
+  "passengerIdCard": "110101200001010011"
+}
+```
+
+下单会复用管理端订单创建逻辑，订单进入 `PENDING_PAYMENT`，库存被锁定，并保持 `requestId` 幂等。
+
+### 支付、取消和退票
+
+```http
+POST /api/passenger/orders/{id}/pay
+POST /api/passenger/orders/{id}/close
+POST /api/passenger/orders/{id}/refund
+Authorization: Bearer {USER token}
+```
+
+这些接口都会先校验订单归属。支付复用支付流水和模拟成功回调链路；退票复用订单退票、库存释放、风险触发和退款流水创建链路。
+
+### 我的支付和退款流水
+
+```http
+GET /api/passenger/payments?status=SUCCESS&page=0&size=10
+GET /api/passenger/refunds?status=PENDING&page=0&size=10
+Authorization: Bearer {USER token}
+```
+
+查询结果只包含当前乘客自己的资金流水。
+
+### 站内通知
+
+```http
+GET /api/passenger/notifications?status=UNREAD&type=ORDER_CREATED&page=0&size=10
+GET /api/passenger/notifications/unread-count
+POST /api/passenger/notifications/{id}/read
+POST /api/passenger/notifications/read-all
+Authorization: Bearer {USER token}
+```
+
+乘客通知接口只返回当前登录乘客自己的通知。`status` 和 `type` 均为可选筛选条件。单条已读和全部已读接口只会更新当前乘客名下的通知。
+
+## 管理端通知
+
+```http
+GET /api/notifications?userId=1001&status=UNREAD&type=REFUND_FAILED&page=0&size=10
+GET /api/notifications/summary
+Authorization: Bearer {ADMIN/RISK_OFFICER/OPERATOR token}
+```
+
+管理端通知接口用于查看全量站内通知和统计概览，普通 `USER` 无权访问。通知类型包括 `ORDER_CREATED`、`PAYMENT_SUCCEEDED`、`TICKET_ISSUED`、`ORDER_CLOSED`、`ORDER_REFUNDED`、`REFUND_SUCCEEDED`、`REFUND_FAILED` 和 `RISK_ALERT`；通知状态包括 `UNREAD` 和 `READ`。
+
+## 查询车次
+
+```http
+GET /api/trains/search?from=BJP&to=SHH&date=2026-06-01
+```
+
+查询结果会按 `from + to + date` 写入车次查询缓存。默认使用本地 TTL 缓存，也可切换为 Redis 缓存；锁票、支付、关闭待支付订单或退票成功后失效对应线路日期缓存。超过限流阈值时返回 429。
+
+## 创建订单
+
+```http
+POST /api/orders
+Content-Type: application/json
+
+{
+  "userId": 1001,
+  "requestId": "8f7f5c41-b6fd-48ab-8ec5-96b08d3c26d1",
+  "trainId": 1,
+  "inventoryId": 1,
+  "passengerName": "张三",
+  "passengerIdCard": "110101200001010011"
+}
+```
+
+`requestId` 为可选幂等号。客户端重复提交相同 `userId + requestId` 时，系统返回第一次创建的订单，不重复扣减库存。
+
+创建订单会扣减余票并生成 `PENDING_PAYMENT` 待支付订单，默认支付截止时间为创建后 15 分钟。此时库存被锁定，但不会触发支付后风控规则。
+
+响应中的主要订单字段：
+
+```json
+{
+  "id": 1,
+  "orderNo": "RT202605091230001234",
+  "requestId": "8f7f5c41-b6fd-48ab-8ec5-96b08d3c26d1",
+  "status": "PENDING_PAYMENT",
+  "paymentDeadlineAt": "2026-05-09T12:45:00",
+  "paidAt": null,
+  "closedAt": null
+}
+```
+
+## 支付订单
+
+```http
+POST /api/orders/1/pay
+```
+
+待支付订单支付成功后状态变为 `PAID`，写入支付时间，失效对应车次查询缓存，并触发下单后风控规则。已支付订单重复支付会直接返回原订单，不重复触发风控。
+
+如果支付时订单已超过 `paymentDeadlineAt`，系统会关闭订单、释放库存，并返回 `CLOSED` 状态。
+
+## 关闭待支付订单
+
+```http
+POST /api/orders/1/close
+```
+
+该接口用于主动关闭 `PENDING_PAYMENT` 订单。关闭后订单状态变为 `CLOSED`，库存释放，车次查询缓存失效。`PAID`、`REFUNDED`、`CLOSED` 订单不能关闭。
+
+## 批量关闭超时订单
+
+```http
+POST /api/orders/close-expired
+```
+
+该接口会扫描超过支付截止时间的待支付订单并关闭。系统也内置定时任务，默认每 60 秒自动执行一次。
+
+## 退票
+
+```http
+POST /api/orders/1/refund
+```
+
+仅 `PAID` 订单允许退票。退票成功后状态变为 `REFUNDED`，库存释放，并触发退票后风控规则。
+
+## 查询订单
+
+```http
+GET /api/orders?userId=1001&status=PAID&fromDate=2026-05-01&toDate=2026-05-31&orderNo=RT2026&page=0&size=10
+```
+
+查询参数：
+
+| 参数 | 是否必填 | 说明 |
+| --- | --- | --- |
+| userId | 否 | 按用户 ID 筛选 |
+| status | 否 | 订单状态：`PENDING_PAYMENT`、`PAID`、`CLOSED`、`REFUNDED`、`CANCELLED` |
+| fromDate | 否 | 创建日期起始，格式 `yyyy-MM-dd`，包含当天 |
+| toDate | 否 | 创建日期结束，格式 `yyyy-MM-dd`，包含当天 |
+| orderNo | 否 | 按订单号模糊查询 |
+| page | 否 | 页码，从 0 开始，默认 0 |
+| size | 否 | 每页大小，默认 10，最大 100 |
+
+非法 `status`、负数页码或非正数页大小会返回 400。
+
+分页响应：
+
+```json
+{
+  "content": [
+    {
+      "id": 1,
+      "orderNo": "RT202605150001234",
+      "userId": 1001,
+      "trainNo": "G101",
+      "status": "PAID",
+      "createdAt": "2026-05-15T09:30:00"
+    }
+  ],
+  "page": 0,
+  "size": 10,
+  "totalElements": 1,
+  "totalPages": 1,
+  "first": true,
+  "last": true
+}
+```
+
+## 创建支付流水
+
+```http
+POST /api/payments
+Content-Type: application/json
+
+{
+  "orderId": 1,
+  "requestId": "pay-req-001"
+}
+```
+
+语义：
+
+- 只能为 `PENDING_PAYMENT` 订单创建支付流水。
+- 同一订单已有 `PENDING` 支付流水时直接返回原流水。
+- 相同 `requestId` 重复创建时直接返回原流水。
+- `PAID`、`CLOSED`、`REFUNDED` 订单不能创建新支付流水。
+
+响应：
+
+```json
+{
+  "id": 1,
+  "paymentNo": "PAY202605150930001234",
+  "orderId": 1,
+  "orderNo": "RT202605150001234",
+  "userId": 1001,
+  "amount": 553.00,
+  "status": "PENDING",
+  "channel": "MOCK",
+  "channelPaymentNo": null,
+  "requestId": "pay-req-001",
+  "callbackRequestId": null,
+  "paidAt": null,
+  "createdAt": "2026-05-15T09:30:00"
+}
+```
+
+## 支付回调
+
+```http
+POST /api/payments/callback
+Content-Type: application/json
+
+{
+  "paymentNo": "PAY202605150930001234",
+  "callbackRequestId": "callback-001",
+  "channelPaymentNo": "CH_PAY_001",
+  "amount": 553.00,
+  "success": true,
+  "message": "mock payment success",
+  "timestamp": "1770000000000",
+  "signature": "9f0f..."
+}
+```
+
+签名原文固定为：
+
+```text
+paymentNo={paymentNo}&callbackRequestId={callbackRequestId}&amount={amount}&success={success}&timestamp={timestamp}
+```
+
+后端使用 `railway.payment.callback-secret` 计算 HMAC-SHA256 签名。`signature-enabled=true` 时缺少签名、签名不匹配或时间戳超过 `timestamp-tolerance-seconds` 都会返回 400。回调金额必须与系统支付流水金额一致，金额比较使用数值语义，避免小数位差异影响判断。
+
+成功回调语义：
+
+- `PENDING` 支付流水变为 `SUCCESS`。
+- 订单从 `PENDING_PAYMENT` 变为 `PAID`。
+- 保存外部渠道流水号 `channelPaymentNo`。
+- 写入支付成功时间。
+- 触发支付后风控规则。
+- 写入操作日志。
+- 失效对应车次查询缓存。
+
+失败回调语义：
+
+- `PENDING` 支付流水变为 `FAILED`。
+- 订单保持 `PENDING_PAYMENT`。
+- 不触发风控。
+- 用户可重新创建支付流水，或等待订单超时关闭。
+
+回调幂等：
+
+- 相同 `callbackRequestId` 重复回调直接返回第一次处理后的支付流水。
+- 已经 `SUCCESS` 的支付流水再次收到回调直接返回原流水，不重复触发风控。
+- 已经 `FAILED` 的支付流水不再允许改为 `SUCCESS`，需要重新创建支付流水。
+
+## 查询支付流水
+
+```http
+GET /api/payments?orderId=1&status=SUCCESS&paymentNo=PAY2026&page=0&size=10
+```
+
+查询参数：
+
+| 参数 | 是否必填 | 说明 |
+| --- | --- | --- |
+| orderId | 否 | 按订单 ID 筛选 |
+| status | 否 | 支付状态：`PENDING`、`SUCCESS`、`FAILED` |
+| paymentNo | 否 | 支付流水号模糊查询 |
+| page | 否 | 页码，从 0 开始，默认 0 |
+| size | 否 | 每页大小，默认 10，最大 100 |
+
+分页响应结构与订单分页一致：
+
+```json
+{
+  "content": [],
+  "page": 0,
+  "size": 10,
+  "totalElements": 0,
+  "totalPages": 0,
+  "first": true,
+  "last": true
+}
+```
+
+## 查询退款流水
+
+```http
+GET /api/refunds?orderId=1&status=PENDING&refundNo=RF2026&page=0&size=10
+```
+
+查询参数：
+
+| 参数 | 是否必填 | 说明 |
+| --- | --- | --- |
+| orderId | 否 | 按订单 ID 筛选 |
+| status | 否 | 退款状态：`PENDING`、`SUCCESS`、`FAILED` |
+| refundNo | 否 | 退款流水号模糊查询 |
+| page | 否 | 页码，从 0 开始，默认 0 |
+| size | 否 | 每页大小，默认 10，最大 100 |
+
+退票成功后系统自动创建 `PENDING` 退款流水。同一订单已存在 `PENDING` 或 `SUCCESS` 退款流水时不会重复创建。
+
+响应示例：
+
+```json
+{
+  "content": [
+    {
+      "id": 1,
+      "refundNo": "RF202605181200001234",
+      "paymentNo": "PAY202605181159001234",
+      "orderId": 1,
+      "orderNo": "RT202605180001234",
+      "userId": 1001,
+      "amount": 553.00,
+      "status": "PENDING",
+      "channel": "MOCK",
+      "channelRefundNo": null,
+      "callbackRequestId": null,
+      "createdAt": "2026-05-18T12:00:00",
+      "refundedAt": null
+    }
+  ],
+  "page": 0,
+  "size": 10,
+  "totalElements": 1,
+  "totalPages": 1,
+  "first": true,
+  "last": true
+}
+```
+
+## 退款回调
+
+```http
+POST /api/refunds/callback
+Content-Type: application/json
+
+{
+  "refundNo": "RF202605181200001234",
+  "callbackRequestId": "refund-callback-001",
+  "channelRefundNo": "CH_RF_001",
+  "amount": 553.00,
+  "success": true,
+  "message": "mock refund success",
+  "timestamp": "1770000000000",
+  "signature": "9f0f..."
+}
+```
+
+签名原文固定为：
+
+```text
+refundNo={refundNo}&callbackRequestId={callbackRequestId}&amount={amount}&success={success}&timestamp={timestamp}
+```
+
+后端使用 `railway.refund.callback-secret` 计算 HMAC-SHA256 签名。退款金额必须与系统退款流水金额一致。成功回调会将退款流水从 `PENDING` 变为 `SUCCESS`，保存 `channelRefundNo` 和 `refundedAt`；失败回调会将退款流水变为 `FAILED`。
+
+退款回调幂等规则：
+
+- 相同 `callbackRequestId` 重复回调直接返回第一次处理结果。
+- 已经 `SUCCESS` 的退款流水重复成功回调直接返回原流水。
+- 已经 `FAILED` 的退款流水不允许再改为 `SUCCESS`。
+- 退款回调不会重复释放库存，也不会重复触发退票风控；库存释放和退票风控发生在订单退票成功时。
+
+## 查询风险事件
+
+```http
+GET /api/risks?status=PENDING&scene=ORDER_CREATED&userId=1001&orderNo=RT2026&fromDate=2026-05-01&toDate=2026-05-31&page=0&size=10
+```
+
+查询参数：
+
+| 参数 | 是否必填 | 说明 |
+| --- | --- | --- |
+| status | 否 | 风险状态：`PENDING`、`CONFIRMED`、`FALSE_POSITIVE`、`CLOSED` |
+| scene | 否 | 风控场景：`ORDER_CREATED`、`ORDER_REFUNDED` |
+| userId | 否 | 按用户 ID 筛选 |
+| orderNo | 否 | 按订单号模糊查询 |
+| fromDate | 否 | 创建日期起始，格式 `yyyy-MM-dd`，包含当天 |
+| toDate | 否 | 创建日期结束，格式 `yyyy-MM-dd`，包含当天 |
+| page | 否 | 页码，从 0 开始，默认 0 |
+| size | 否 | 每页大小，默认 10，最大 100 |
+
+非法 `status`、非法 `scene`、负数页码、非正数页大小或日期范围错误会返回 400。
+
+响应示例：
+
+```json
+{
+  "content": [
+    {
+      "id": 1,
+      "orderId": 12,
+      "orderNo": "RT202605150001234",
+      "userId": 1001,
+      "riskType": "RAPID_PURCHASE",
+      "riskLevel": "MEDIUM",
+      "scene": "ORDER_CREATED",
+      "status": "PENDING",
+      "reason": "用户 10 分钟内下单次数达到 3 次",
+      "handled": false,
+      "handleRemark": null,
+      "handledBy": null,
+      "handledAt": null,
+      "closedAt": null,
+      "createdAt": "2026-05-15T10:10:00"
+    }
+  ],
+  "page": 0,
+  "size": 10,
+  "totalElements": 1,
+  "totalPages": 1,
+  "first": true,
+  "last": true
+}
+```
+
+## 风险运营报表
+
+```http
+GET /api/risks/summary
+```
+
+响应示例：
+
+```json
+{
+  "totalRiskCount": 12,
+  "pendingRiskCount": 3,
+  "confirmedRiskCount": 4,
+  "falsePositiveRiskCount": 2,
+  "closedRiskCount": 3,
+  "pendingRate": 0.25,
+  "confirmedRate": 0.33,
+  "falsePositiveRate": 0.17,
+  "closedRate": 0.25,
+  "handlingCompletionRate": 0.75,
+  "averageHandleMinutes": 18.5,
+  "riskCountByScene": {
+    "ORDER_CREATED": 8,
+    "ORDER_REFUNDED": 4
+  },
+  "riskCountByStatus": {
+    "PENDING": 3,
+    "CONFIRMED": 4,
+    "FALSE_POSITIVE": 2,
+    "CLOSED": 3
+  }
+}
+```
+
+比例字段统一使用 0 到 1 的小数，分母使用 `max(1, totalRiskCount)` 避免除以 0。`handlingCompletionRate = 非 PENDING 风险数量 / max(1, totalRiskCount)`，`averageHandleMinutes` 基于 `handledAt - createdAt` 计算已首次处置事件的平均耗时。
+
+## 处理风险事件
+
+```http
+POST /api/risks/1/handle
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "status": "CONFIRMED",
+  "remark": "短时间多次购票，确认存在异常购票行为"
+}
+```
+
+该接口仅允许 `RISK_OFFICER` 和 `ADMIN` 角色访问，操作人默认取当前登录用户。
+
+状态流转规则：
+
+- `PENDING -> CONFIRMED`
+- `PENDING -> FALSE_POSITIVE`
+- `PENDING -> CLOSED`
+- `CONFIRMED -> CLOSED`
+- `FALSE_POSITIVE -> CLOSED`
+- `CLOSED` 不允许重复处置
+
+为了兼容早期“标记已处理”按钮，如果请求体为空，后端按 `CLOSED` 处理。
+
+响应中会返回最新风险事件状态、处置备注、处理人、处理时间和关闭时间。每次处置都会写入 `risk_event_handle_records` 和 `operation_logs`。
+
+## 查询风险处置历史
+
+```http
+GET /api/risks/1/handle-records
+```
+
+响应示例：
+
+```json
+[
+  {
+    "id": 1,
+    "riskEventId": 1,
+    "fromStatus": "PENDING",
+    "toStatus": "CONFIRMED",
+    "remark": "短时间多次购票，确认存在异常购票行为",
+    "operatorName": "risk",
+    "operatedAt": "2026-05-15T10:12:00"
+  }
+]
+```
+
+## 运营看板
+
+```http
+GET /api/dashboard/summary
+```
+
+新增指标字段：
+
+```json
+{
+  "totalOrderCount": 20,
+  "pendingPaymentOrderCount": 3,
+  "paidOrderCount": 10,
+  "closedOrderCount": 4,
+  "refundedOrderCount": 3,
+  "unhandledRiskCount": 2,
+  "refundRate": 0.23,
+  "riskRate": 0.15
+}
+```
+
+其中 `refundRate = refundedOrderCount / max(1, paidOrderCount + refundedOrderCount)`，`riskRate = totalRiskEvents / max(1, paidOrderCount + refundedOrderCount)`。`unhandledRiskCount` 和 `openRiskEvents` 基于 `RiskStatus.PENDING` 统计。接口继续保留 `totalOrders`、`paidOrders`、`refundedOrders`、`openRiskEvents` 等旧字段，方便前端兼容。
+
+## 审计日志
+
+```http
+GET /api/logs
+Authorization: Bearer {token}
+```
+
+该接口仅允许 `RISK_OFFICER` 和 `ADMIN` 角色访问。
+
+## 查询车次缓存统计
+
+```http
+GET /api/cache/train-search
+Authorization: Bearer {token}
+```
+
+该接口仅允许 `RISK_OFFICER` 和 `ADMIN` 角色访问。
+
+响应：
+
+```json
+{
+  "enabled": true,
+  "cacheMode": "local",
+  "configuredMode": "local",
+  "ttlSeconds": 30,
+  "maxEntries": 256,
+  "entryCount": 1,
+  "hitCount": 3,
+  "missCount": 2,
+  "evictCount": 1,
+  "redisAvailable": false,
+  "localFallback": false
+}
+```
+
+## 清空车次缓存
+
+```http
+DELETE /api/cache/train-search
+Authorization: Bearer {token}
+```
+
+该接口仅允许 `ADMIN` 角色访问。
+
+## 查询限流统计
+
+```http
+GET /api/rate-limit/summary
+Authorization: Bearer {token}
+```
+
+该接口仅允许 `ADMIN` 角色访问。
+
+响应：
+
+```json
+{
+  "enabled": true,
+  "mode": "local",
+  "configuredMode": "local",
+  "redisAvailable": false,
+  "localFallback": false,
+  "localKeyCount": 4,
+  "blockedCount": 2,
+  "rules": {
+    "train-search": {
+      "limit": 60,
+      "windowSeconds": 60
+    },
+    "order-create": {
+      "limit": 10,
+      "windowSeconds": 60
+    },
+    "payment-callback": {
+      "limit": 30,
+      "windowSeconds": 60
+    },
+    "risk-handle": {
+      "limit": 30,
+      "windowSeconds": 60
+    }
+  }
+}
+```
+
+`rules` 表示当前各接口限流阈值配置，调整 `application.yml` 后无需修改 Controller 代码。
+
+限流触发时统一返回：
+
+```json
+{
+  "success": false,
+  "code": "TOO_MANY_REQUESTS",
+  "message": "请求过于频繁，请稍后再试"
+}
+```
+
+## 查询 Outbox 事件
+
+```http
+GET /api/outbox-events?status=PENDING&eventType=ORDER_PAID&page=0&size=10
+Authorization: Bearer {token}
+```
+
+该接口仅允许 `ADMIN` 角色访问。无登录令牌返回 401，角色不足返回 403。
+
+查询参数：
+
+| 参数 | 是否必填 | 说明 |
+| --- | --- | --- |
+| status | 否 | 事件状态：`PENDING`、`PROCESSING`、`DONE`、`FAILED` |
+| eventType | 否 | 事件类型，如 `ORDER_PAID`、`PAYMENT_SUCCEEDED`、`REFUND_CREATED` |
+| page | 否 | 页码，从 0 开始，默认 0 |
+| size | 否 | 每页大小，默认 10，最大 100 |
+
+响应示例：
+
+```json
+{
+  "content": [
+    {
+      "eventId": "d6a9b4e2-7d3a-4c8a-9e0a-3d9f0f5e1c11",
+      "eventType": "ORDER_PAID",
+      "aggregateType": "ORDER",
+      "aggregateId": "1",
+      "payload": "{\"orderId\":1,\"status\":\"PAID\"}",
+      "status": "PENDING",
+      "retryCount": 0,
+      "maxRetryCount": 3,
+      "lastError": null,
+      "createdAt": "2026-05-18T12:00:00",
+      "processedAt": null
+    }
+  ],
+  "page": 0,
+  "size": 10,
+  "totalElements": 1,
+  "totalPages": 1,
+  "first": true,
+  "last": true
+}
+```
+
+## 手动派发 Outbox 事件
+
+```http
+POST /api/outbox-events/dispatch
+Authorization: Bearer {token}
+```
+
+该接口仅允许 `ADMIN` 角色访问，用于手动触发一次待处理事件扫描。
+
+响应示例：
+
+```json
+{
+  "processedCount": 6
+}
+```
+
+派发成功后事件变为 `DONE`。处理失败时记录 `lastError`，`retryCount + 1`；未达到最大重试次数则回到 `PENDING` 等待下次重试，达到最大重试次数后变为 `FAILED`。
+
+## Outbox 事件统计
+
+```http
+GET /api/outbox-events/summary
+Authorization: Bearer {token}
+```
+
+该接口仅允许 `ADMIN` 角色访问，用于查看 Outbox 事件状态分布、失败率和积压情况。
+
+响应示例：
+
+```json
+{
+  "totalCount": 120,
+  "pendingCount": 8,
+  "processingCount": 1,
+  "doneCount": 108,
+  "failedCount": 3,
+  "retryingCount": 2,
+  "maxRetryReachedCount": 3,
+  "backlogCount": 9,
+  "failureRate": 0.025,
+  "averageProcessSeconds": 1.2,
+  "eventCountByType": {
+    "ORDER_PAID": 42,
+    "REFUND_CREATED": 10
+  },
+  "eventCountByStatus": {
+    "PENDING": 8,
+    "DONE": 108,
+    "FAILED": 3
+  },
+  "failedCountByType": {
+    "PAYMENT_SUCCEEDED": 2
+  }
+}
+```
+
+`backlogCount = PENDING + PROCESSING`，`failureRate = failedCount / max(1, totalCount)`。
+
+## 重试失败 Outbox 事件
+
+```http
+POST /api/outbox-events/{id}/retry
+Authorization: Bearer {token}
+```
+
+该接口仅允许 `ADMIN` 角色访问。只有 `FAILED` 事件可以重试；接口只负责将事件重新置为 `PENDING`，实际处理仍由派发器完成。重试时保留历史 `retryCount` 和 `lastError`，将 `nextRetryAt` 设置为当前时间并清空 `processedAt`。
+
+批量重试：
+
+```http
+POST /api/outbox-events/retry-failed
+Authorization: Bearer {token}
+```
+
+响应示例：
+
+```json
+{
+  "enqueuedCount": 3
+}
+```
+
+## 演示账号
+
+| 账号 | 密码 | 角色 |
+| --- | --- | --- |
+| `admin` | `admin123` | `ADMIN` |
+| `risk` | `risk123` | `RISK_OFFICER` |
+| `ops` | `ops123` | `OPERATOR` |
+
+## Ticket records and order detail APIs
+
+### Passenger order detail
+
+```http
+GET /api/passenger/orders/{id}/detail
+Authorization: Bearer {USER token}
+```
+
+Returns the current passenger's order detail. The response includes the order, electronic ticket, payment records, and refund records. The service validates order ownership before returning data.
+
+### Admin order detail
+
+```http
+GET /api/orders/{id}/detail
+Authorization: Bearer {ADMIN | OPERATOR | RISK_OFFICER token}
+```
+
+Returns a transaction trace view for the order. The response includes the order, electronic ticket, payment records, refund records, related risk events, related Outbox events, and recent operation logs.
+
+### Electronic ticket response fields
+
+```json
+{
+  "ticketNo": "TK202605180001",
+  "orderId": 1,
+  "orderNo": "RT202605180001",
+  "trainNo": "G101",
+  "departureStation": "Beijing South",
+  "arrivalStation": "Shanghai Hongqiao",
+  "travelDate": "2026-06-06",
+  "seatType": "SECOND_CLASS",
+  "passengerName": "Passenger",
+  "passengerIdCardMasked": "110101********0011",
+  "amount": 553.00,
+  "status": "ISSUED",
+  "issuedAt": "2026-06-06T10:00:00",
+  "invalidatedAt": null
+}
+```
+
+The ticket is issued after payment success and marked `REFUNDED` after order refund. Ticket status does not change the order state machine.
+
+## Passenger traveler profile APIs
+
+Passenger traveler APIs require a `USER` token. The server always uses the current JWT user as the traveler owner.
+
+```http
+GET /api/passenger/travelers
+POST /api/passenger/travelers
+PUT /api/passenger/travelers/{id}
+DELETE /api/passenger/travelers/{id}
+POST /api/passenger/travelers/{id}/default
+Authorization: Bearer {USER token}
+```
+
+Request body:
+
+```json
+{
+  "passengerName": "Zhang San",
+  "idType": "ID_CARD",
+  "idNo": "110101200001010011",
+  "phone": "13800010001",
+  "defaultTraveler": true
+}
+```
+
+Response masks sensitive fields:
+
+```json
+{
+  "id": 1,
+  "passengerName": "Zhang San",
+  "idType": "ID_CARD",
+  "idNoMasked": "110***********0011",
+  "phoneMasked": "138****0001",
+  "defaultTraveler": true
+}
+```
+
+`POST /api/passenger/orders` can use `travelerId` instead of manual passenger identity fields:
+
+```json
+{
+  "requestId": "passenger-order-001",
+  "trainId": 1,
+  "inventoryId": 1,
+  "travelerId": 1
+}
+```
+
+The service validates traveler ownership and writes masked passenger snapshots to the order and ticket records.
+## 管理端综合查询
+
+```http
+GET /api/search?keyword=RT202606120001&types=ORDER,TICKET,PAYMENT&limitPerType=5&includeTrace=true
+Authorization: Bearer {ADMIN/RISK_OFFICER/OPERATOR token}
+```
+
+`keyword` 为必填且至少 2 个字符。`types` 可选，支持 `ORDER`、`TICKET`、`PAYMENT`、`REFUND`、`TRAVELER`、`RISK`、`OUTBOX`、`NOTIFICATION`、`OPERATION_LOG`。`limitPerType` 默认 5，最大 20。`includeTrace=true` 时返回轻量链路提示。
+
+响应示例：
+
+```json
+{
+  "keyword": "RT202606120001",
+  "totalCount": 2,
+  "groups": [
+    {
+      "type": "ORDER",
+      "typeName": "Order",
+      "count": 1,
+      "items": [
+        {
+          "id": "ORDER-1",
+          "title": "RT202606120001",
+          "businessType": "ORDER",
+          "orderId": 1,
+          "orderNo": "RT202606120001",
+          "detailAction": "ORDER_DETAIL",
+          "matchedFields": ["orderNo"],
+          "trace": ["ORDER -> PAYMENT/REFUND/TICKET/RISK/OUTBOX/LOG"]
+        }
+      ]
+    }
+  ]
+}
+```
+
+该接口仅面向管理端角色开放。常用乘车人结果只返回脱敏证件号和手机号，不返回密码、JWT、签名密钥或完整个人敏感字段。

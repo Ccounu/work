@@ -1,0 +1,58 @@
+services:
+  railway-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: railway-backend
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SERVER_PORT: 8080
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/railway_ticket_risk?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Hong_Kong
+      SPRING_DATASOURCE_USERNAME: railway
+      SPRING_DATASOURCE_PASSWORD: railway_demo
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      JWT_SECRET: docker-demo-jwt-secret-change-me
+      PAYMENT_CALLBACK_SECRET: docker-demo-payment-callback-secret
+      REFUND_CALLBACK_SECRET: docker-demo-refund-callback-secret
+    ports:
+      - "8080:8080"
+
+  mysql:
+    image: mysql:8.0
+    container_name: railway-mysql
+    environment:
+      MYSQL_DATABASE: railway_ticket_risk
+      MYSQL_USER: railway
+      MYSQL_PASSWORD: railway_demo
+      MYSQL_ROOT_PASSWORD: root_demo
+      TZ: Asia/Hong_Kong
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3307:3306"
+    volumes:
+      - railway-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -proot_demo --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    container_name: railway-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - railway-redis-data:/data
+
+volumes:
+  railway-mysql-data:
+  railway-redis-data:

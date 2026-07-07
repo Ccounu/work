@@ -1,0 +1,14 @@
+package com.example.railway;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
+
+@EnableScheduling
+@SpringBootApplication
+public class RailwayTicketRiskApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(RailwayTicketRiskApplication.class, args);
+    }
+}

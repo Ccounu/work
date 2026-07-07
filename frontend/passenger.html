@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>乘客购票服务 - 铁路客运票务与风控运营平台</title>
+  <link rel="stylesheet" href="./styles.css?v=20260703-account-single-card-v5">
+</head>
+<body class="passenger-page passenger-consumer-page">
+  <section class="login-screen passenger-login passenger-gateway" aria-label="乘客登录">
+    <a class="back-link login-back-link" href="/">返回入口</a>
+    <div class="passenger-gateway-copy">
+      <a class="portal-brand" href="/" aria-label="返回铁路客运票务与风控运营平台">
+        <span class="brand-mark large">RT</span>
+        <span>
+          <strong>乘客购票服务</strong>
+          <small>乘客购票</small>
+        </span>
+      </a>
+      <p class="eyebrow">Search. Book. Travel.</p>
+      <h1 class="reveal-title" data-login-title>查询车票<br>管理每一段行程</h1>
+      <p class="hero-copy">登录后可以查看可购车次、创建待支付订单、完成模拟支付、申请退票，并只查看属于当前乘客的订单与资金记录。</p>
+    </div>
+
+    <div class="login-card passenger-login-card">
+      <div class="login-card-head">
+        <p class="eyebrow">乘客登录</p>
+        <h2>进入乘客端</h2>
+        <p>登录已有账号，或注册新的普通乘客账号后开始购票。</p>
+      </div>
+      <div class="passenger-auth-switch" role="tablist" aria-label="乘客账号入口">
+        <button id="passenger-show-login" class="auth-mode-button active" type="button">账号登录</button>
+        <button id="passenger-show-register" class="auth-mode-button" type="button">注册账号</button>
+      </div>
+      <form id="passenger-login-form" class="login-form">
+        <label>
+          用户名
+          <input id="passenger-login-username" type="text" value="passenger1" autocomplete="username">
+        </label>
+        <label>
+          密码
+          <input id="passenger-login-password" type="password" value="123456" autocomplete="current-password">
+        </label>
+        <button class="primary-button wide-button" type="submit">登录乘客端</button>
+        <div class="forgot-password-row">
+          <button class="forgot-password-link" type="button" data-forgot-password-trigger>忘记密码？</button>
+        </div>
+      </form>
+      <form id="passenger-register-form" class="login-form passenger-register-form" hidden>
+        <label>
+          昵称
+          <input id="passenger-register-display-name" type="text" maxlength="64" placeholder="例如：张三" autocomplete="name">
+        </label>
+        <label>
+          用户名
+          <input id="passenger-register-username" type="text" maxlength="64" placeholder="3-64 位字母、数字、下划线" autocomplete="username">
+        </label>
+        <label>
+          密码
+          <input id="passenger-register-password" type="password" minlength="6" maxlength="64" placeholder="至少 6 位" autocomplete="new-password">
+        </label>
+        <label>
+          确认密码
+          <input id="passenger-register-confirm-password" type="password" minlength="6" maxlength="64" autocomplete="new-password">
+        </label>
+        <div id="passenger-register-error" class="form-error" aria-live="polite"></div>
+        <button class="primary-button wide-button" type="submit">注册并进入</button>
+      </form>
+    </div>
+  </section>
+
+  <div class="passenger-shell passenger-consumer-shell mercury-shell">
+    <aside class="passenger-site-header passenger-app-sidebar">
+      <a class="product-brand passenger-site-brand" href="#passenger-search" aria-label="返回查票首页">
+        <span class="brand-mark passenger-main-mark">RT</span>
+        <span>
+          <strong>铁路购票服务</strong>
+          <small>购票服务</small>
+        </span>
+      </a>
+      <nav class="passenger-nav passenger-site-nav" aria-label="乘客端导航">
+        <a href="#passenger-search">
+          <span class="passenger-nav-icon" aria-hidden="true">
+            <svg class="nav-search-svg" viewBox="0 0 24 24"><path d="M10.8 17.1a6.3 6.3 0 1 0 0-12.6 6.3 6.3 0 0 0 0 12.6zM15.3 15.3 20 20"/></svg>
+          </span>
+          <span>查票</span>
+        </a>
+        <a href="#passenger-summary">
+          <span class="passenger-nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M5 18V7.5A2.5 2.5 0 0 1 7.5 5h9A2.5 2.5 0 0 1 19 7.5V18M8 9h8M8 13h5M7.5 18 6 20M16.5 18l1.5 2"/></svg>
+          </span>
+          <span>行程</span>
+        </a>
+        <a href="#passenger-onboarding" hidden aria-hidden="true" tabindex="-1">
+          <span class="passenger-nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M7 5h10v14H7zM10 9h4M10 13h4M9 17h6"/></svg>
+          </span>
+          <span>引导</span>
+        </a>
+        <a href="#passenger-orders">
+          <span class="passenger-nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M6 6h12M6 11h12M6 16h8M4 6h.01M4 11h.01M4 16h.01"/></svg>
+          </span>
+          <span>订单</span>
+        </a>
+        <a href="#passenger-tickets">
+          <span class="passenger-nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M5 8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2.2a2 2 0 0 0 0 3.6V16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-2.2a2 2 0 0 0 0-3.6zM9 8v8"/></svg>
+          </span>
+          <span>车票</span>
+        </a>
+        <a href="#passenger-notifications">
+          <span class="passenger-nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0v4l2 3H4l2-3zM10 19h4"/></svg>
+          </span>
+          <span>消息</span>
+          <span id="passenger-nav-unread" class="nav-badge">0</span>
+        </a>
+        <a href="#passenger-account">
+          <span class="passenger-nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM5 20a7 7 0 0 1 14 0"/></svg>
+          </span>
+          <span>账号</span>
+        </a>
+      </nav>
+    </aside>
+
+    <div class="passenger-main passenger-app-main">
+      <header class="passenger-app-topbar">
+        <div class="passenger-top-actions">
+          <button class="round-icon-button" type="button" data-topbar-jump="passenger-notifications" aria-label="查看消息"><span class="bell-icon" aria-hidden="true"></span></button>
+          <div class="passenger-userbar passenger-account">
+            <span id="passenger-auth-role" class="visually-hidden">未登录</span>
+            <strong id="passenger-auth-user">访客模式</strong>
+            <div class="passenger-avatar" aria-label="乘客头像">
+              <svg class="person-avatar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM5 20a7 7 0 0 1 14 0"></path></svg>
+            </div>
+            <button id="passenger-logout-button" class="ghost-button" type="button">退出</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="passenger-site-main">
+      <section id="passenger-search" class="passenger-section booking-landing">
+        <div class="booking-hero-panel">
+          <div class="booking-copy">
+            <p class="eyebrow">车票查询</p>
+            <h1 class="reveal-title">从这里开始<br>你的下一段行程</h1>
+            <p>选择出发站、到达站和日期，系统会展示当前可购车次。也可以直接查看全部可购车次。</p>
+          </div>
+          <form id="passenger-search-form" class="booking-search-card">
+            <label>
+              出发站
+              <select id="passenger-from-station"></select>
+            </label>
+            <label>
+              到达站
+              <select id="passenger-to-station"></select>
+            </label>
+            <label>
+              乘车日期
+              <input id="passenger-travel-date" type="date">
+            </label>
+            <div class="booking-actions">
+              <button class="primary-button" type="submit">查询车票</button>
+              <button id="passenger-show-available" class="secondary-button" type="button">全部可购车次</button>
+              <button id="passenger-show-hot-routes" class="ghost-button" type="button">热门线路</button>
+            </div>
+          </form>
+          <div id="passenger-hot-routes" class="route-shortcuts passenger-route-shortcuts expanded" aria-label="热门线路快捷入口"></div>
+        </div>
+
+        <div class="passenger-search-results">
+          <div class="passenger-section-head">
+            <div>
+              <p class="eyebrow">可购车次</p>
+              <h2>可购车次</h2>
+            </div>
+            <span class="soft-pill">库存实时扣减</span>
+          </div>
+          <div id="passenger-train-results" class="train-ticket-list"></div>
+        </div>
+      </section>
+
+      <section id="passenger-summary" class="passenger-section passenger-home-section">
+        <div class="passenger-section-head journey-page-head">
+          <div>
+            <p class="eyebrow">我的行程</p>
+            <h2>我的行程</h2>
+            <p>当前乘客账号的订单状态、最近订单和即将出行。</p>
+          </div>
+          <button id="refresh-passenger" class="secondary-button" type="button">刷新</button>
+        </div>
+        <div class="journey-stat-strip">
+          <span id="passenger-metric-total" class="visually-hidden">0</span>
+          <button class="journey-stat clickable-card" type="button" data-jump-orders="PENDING_PAYMENT">
+            <span>待支付</span>
+            <strong id="passenger-metric-pending">0</strong>
+          </button>
+          <button class="journey-stat success-metric clickable-card" type="button" data-jump-orders="PAID">
+            <span>已支付</span>
+            <strong id="passenger-metric-paid">0</strong>
+          </button>
+          <button class="journey-stat neutral-metric clickable-card" type="button" data-jump-orders="CLOSED">
+            <span>已关闭</span>
+            <strong id="passenger-metric-closed">0</strong>
+          </button>
+          <button class="journey-stat clickable-card" type="button" data-jump-orders="REFUNDED">
+            <span>已退票</span>
+            <strong id="passenger-metric-refunded">0</strong>
+          </button>
+          <button class="journey-stat clickable-card" type="button" data-jump-payments>
+            <span>支付</span>
+            <strong id="passenger-metric-payments">0</strong>
+          </button>
+          <button class="journey-stat clickable-card" type="button" data-jump-refunds>
+            <span>退款</span>
+            <strong id="passenger-metric-refunds">0</strong>
+          </button>
+        </div>
+        <div class="journey-board">
+          <article class="journey-panel journey-orders-panel">
+            <div class="panel-head">
+              <div>
+                <h3>最近订单</h3>
+                <p>按创建时间展示最近的乘客订单。</p>
+              </div>
+            </div>
+            <div id="passenger-latest-orders" class="event-list compact-list"></div>
+          </article>
+          <article class="journey-panel accent-panel journey-upcoming-panel">
+            <div class="panel-head">
+              <div>
+                <h3>即将出行</h3>
+                <p>展示已支付且乘车日期未过的行程。</p>
+              </div>
+            </div>
+            <div id="passenger-upcoming-trips" class="event-list compact-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="passenger-account" class="passenger-section passenger-account-section">
+        <div class="passenger-section-head account-page-head">
+          <div>
+            <p class="eyebrow">账号设置</p>
+            <h2>账号与安全</h2>
+            <p>管理个人资料、安全密码和默认乘车人，购票时会优先使用这些信息。</p>
+          </div>
+        </div>
+        <div class="passenger-account-layout">
+          <article class="passenger-account-card">
+            <div class="passenger-account-left">
+              <div class="account-profile-summary">
+                <div class="profile-header">
+                  <div id="passenger-profile-avatar" class="profile-avatar" aria-label="乘客头像">RT</div>
+                  <div class="profile-identity">
+                    <span id="passenger-profile-role" class="soft-pill">乘客</span>
+                    <h3 id="passenger-profile-display">-</h3>
+                    <p id="passenger-profile-username">-</p>
+                    <p id="passenger-avatar-status" class="avatar-status" aria-live="polite"></p>
+                  </div>
+                  <div class="avatar-upload-actions">
+                    <input id="passenger-avatar-file" class="avatar-file-input" type="file" accept="image/*" tabindex="-1">
+                    <button id="passenger-avatar-upload-button" class="secondary-button compact-button" type="button">上传头像</button>
+                    <button id="passenger-avatar-remove-button" class="ghost-button compact-button" type="button" hidden>移除头像</button>
+                  </div>
+                </div>
+                <div class="profile-facts">
+                  <div><span>默认乘车人</span><strong id="passenger-profile-default-traveler">未设置</strong></div>
+                  <div><span>订单数</span><strong id="passenger-profile-order-count">0</strong></div>
+                  <div><span>有效电子票</span><strong id="passenger-profile-ticket-count">0</strong></div>
+                </div>
+                <div class="account-profile-data" aria-label="账号资料摘要">
+                  <div><span>账号昵称</span><strong id="passenger-profile-detail-display">-</strong></div>
+                  <div><span>登录账号</span><strong id="passenger-profile-detail-username">-</strong></div>
+                  <div><span>账号类型</span><strong id="passenger-profile-detail-role">普通乘客</strong></div>
+                  <div><span>购票身份</span><strong id="passenger-profile-detail-traveler">未设置</strong></div>
+                  <div><span>订单数量</span><strong id="passenger-profile-detail-orders">0</strong></div>
+                  <div><span>有效电子票</span><strong id="passenger-profile-detail-tickets">0</strong></div>
+                </div>
+              </div>
+            </div>
+            <div class="passenger-account-right">
+              <form id="passenger-profile-form" class="account-settings-form account-profile-form">
+                <div>
+                  <h3>修改昵称</h3>
+                  <p>修改昵称后会立即刷新当前登录信息。</p>
+                  <ul class="account-card-points">
+                    <li>用于顶部账号展示</li>
+                    <li>不会改变证件实名信息</li>
+                  </ul>
+                </div>
+                <label>
+                  昵称
+                  <input id="passenger-profile-display-name" type="text" maxlength="64" autocomplete="name">
+                </label>
+                <div id="passenger-profile-error" class="form-error" aria-live="polite"></div>
+                <button class="secondary-button" type="submit">保存资料</button>
+              </form>
+              <form id="passenger-password-form" class="account-settings-form account-security-form">
+                <div>
+                  <h3>安全设置</h3>
+                  <p>修改密码后，新密码立即生效，旧密码无法继续登录。</p>
+                  <ul class="account-card-points">
+                    <li>提交后立即更新登录密码</li>
+                    <li>建议使用 6 位以上组合密码</li>
+                    <li>当前登录状态会保留</li>
+                  </ul>
+                </div>
+                <label>
+                  旧密码
+                  <input id="passenger-old-password" type="password" autocomplete="current-password">
+                </label>
+                <div class="form-grid">
+                  <label>
+                    新密码
+                    <input id="passenger-new-password" type="password" minlength="6" maxlength="64" autocomplete="new-password">
+                  </label>
+                  <label>
+                    确认新密码
+                    <input id="passenger-confirm-password" type="password" minlength="6" maxlength="64" autocomplete="new-password">
+                  </label>
+                </div>
+                <div id="passenger-password-error" class="form-error" aria-live="polite"></div>
+                <button class="secondary-button" type="submit">更新密码</button>
+              </form>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="passenger-onboarding" class="passenger-section passenger-onboarding-section" hidden>
+        <div class="passenger-section-head">
+          <div>
+            <p class="eyebrow">首单引导</p>
+            <h2>完成第一次购票</h2>
+            <p>只在你需要时显示，按步骤完成乘车人、查票、下单、支付和电子票查看。</p>
+          </div>
+          <button id="passenger-onboarding-action" class="primary-button" type="button">开始第一段行程</button>
+        </div>
+        <article class="onboarding-card">
+          <div class="panel-head">
+            <div>
+              <h3>首单进度</h3>
+              <p>系统会根据你的真实操作自动更新完成状态，全部完成后可关闭此引导。</p>
+            </div>
+          </div>
+          <div id="passenger-onboarding-steps" class="onboarding-steps"></div>
+        </article>
+      </section>
+
+      <section id="passenger-transactions" class="passenger-section passenger-transaction-section">
+        <div class="passenger-section-head">
+          <div>
+            <p class="eyebrow">行程待办</p>
+            <h2>我的行程提醒</h2>
+            <p>集中查看待支付、有效车票、改签、退款和未读提醒，帮助你判断下一步该做什么。</p>
+          </div>
+          <button id="passenger-refresh-transactions" class="secondary-button" type="button">刷新提醒</button>
+        </div>
+        <div id="passenger-transaction-stats" class="transaction-status-grid"></div>
+        <div class="transaction-flow-board">
+          <article class="transaction-todo-panel">
+            <div class="panel-head">
+              <div>
+                <h3>待办事项</h3>
+                <p>把需要立即处理的支付、改签、退款和消息集中到这里。</p>
+              </div>
+            </div>
+            <div id="passenger-transaction-todos" class="passenger-todo-list"></div>
+          </article>
+          <article>
+            <div class="panel-head">
+              <div>
+                <h3>最近订单动态</h3>
+                <p>订单、支付、退票会同步影响电子票和流水。</p>
+              </div>
+            </div>
+            <div id="passenger-transaction-orders" class="event-list compact-list"></div>
+          </article>
+          <article>
+            <div class="panel-head">
+              <div>
+                <h3>最近改签动态</h3>
+                <p>查看原订单、新订单和补退差价状态。</p>
+              </div>
+            </div>
+            <div id="passenger-transaction-changes" class="event-list compact-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="passenger-travelers" class="passenger-section passenger-traveler-section account-traveler-module">
+        <div class="passenger-section-head">
+          <div>
+            <p class="eyebrow">常用乘车人</p>
+            <h2>常用乘车人</h2>
+            <p>维护常用乘车人实名信息，购票时可直接选择。证件号和手机号仅脱敏展示。</p>
+          </div>
+          <button id="passenger-refresh-travelers" class="secondary-button" type="button">刷新乘车人</button>
+        </div>
+        <div class="traveler-layout">
+          <form id="passenger-traveler-form" class="traveler-form-card">
+            <input id="passenger-traveler-id" type="hidden">
+            <div class="form-grid traveler-form-grid">
+              <label>
+                乘车人姓名
+                <input id="passenger-traveler-name" type="text" maxlength="64" placeholder="请输入姓名">
+              </label>
+              <label>
+                证件类型
+                <select id="passenger-traveler-id-type">
+                  <option value="ID_CARD">居民身份证</option>
+                  <option value="PASSPORT">护照</option>
+                  <option value="OTHER">其他证件</option>
+                </select>
+              </label>
+              <label>
+                证件号
+                <input id="passenger-traveler-id-no" type="text" maxlength="64" placeholder="请输入证件号">
+              </label>
+              <label>
+                手机号
+                <input id="passenger-traveler-phone" type="text" maxlength="32" placeholder="请输入手机号">
+              </label>
+            </div>
+            <label class="inline-check">
+              <input id="passenger-traveler-default" type="checkbox">
+              设为默认乘车人
+            </label>
+            <div id="passenger-traveler-error" class="form-error" aria-live="polite"></div>
+            <div class="inline-actions">
+              <button id="passenger-traveler-submit" class="primary-button" type="submit">保存乘车人</button>
+              <button id="passenger-traveler-cancel" class="ghost-button" type="button" hidden>取消编辑</button>
+            </div>
+          </form>
+          <div id="passenger-traveler-list" class="traveler-list"></div>
+        </div>
+      </section>
+
+      <section id="passenger-orders" class="passenger-section passenger-order-center">
+        <div class="passenger-section-head">
+          <div>
+            <p class="eyebrow">我的订单</p>
+            <h2>我的订单</h2>
+            <p>待支付订单可支付或取消，已支付订单可申请退票。</p>
+          </div>
+        </div>
+        <div class="passenger-filter-bar">
+          <label>
+            订单状态
+            <select id="passenger-order-status">
+              <option value="">全部状态</option>
+              <option value="PENDING_PAYMENT">待支付</option>
+              <option value="PAID">已支付</option>
+              <option value="CLOSED">已关闭</option>
+              <option value="REFUNDED">已退票</option>
+            </select>
+          </label>
+          <button id="passenger-load-orders" class="secondary-button" type="button">查询订单</button>
+          <button id="passenger-reset-orders" class="ghost-button" type="button">重置</button>
+        </div>
+        <div id="passenger-order-cards" class="passenger-card-list journey-card-list"></div>
+        <div class="pagination">
+          <span id="passenger-order-page-info">第 1 / 1 页，共 0 条</span>
+          <div class="inline-actions">
+            <button id="passenger-prev-orders" class="secondary-button compact-button" type="button">上一页</button>
+            <button id="passenger-next-orders" class="secondary-button compact-button" type="button">下一页</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="passenger-changes" class="passenger-section passenger-change-section">
+        <div class="passenger-section-head">
+          <div>
+            <p class="eyebrow">改签记录</p>
+            <h2>我的改签</h2>
+            <p>追踪原票失效、新票生成、补差支付和差额退款。</p>
+          </div>
+          <button id="passenger-load-changes" class="secondary-button" type="button">刷新改签</button>
+        </div>
+        <div class="passenger-filter-bar">
+          <label>
+            改签状态
+            <select id="passenger-change-status">
+              <option value="">全部改签</option>
+              <option value="PENDING_PAYMENT">待支付</option>
+              <option value="SUCCESS">改签成功</option>
+              <option value="FAILED">改签失败</option>
+              <option value="CANCELLED">已取消</option>
+            </select>
+          </label>
+        </div>
+        <div id="passenger-change-results" class="passenger-record-list passenger-change-list"></div>
+        <div class="pagination">
+          <span id="passenger-change-page-info">第 1 / 1 页，共 0 条</span>
+          <div class="inline-actions">
+            <button id="passenger-prev-changes" class="secondary-button compact-button" type="button">上一页</button>
+            <button id="passenger-next-changes" class="secondary-button compact-button" type="button">下一页</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="passenger-tickets" class="passenger-section passenger-ticket-wallet-section">
+        <div class="passenger-section-head">
+          <div>
+            <p class="eyebrow">电子票夹</p>
+            <h2>我的电子票</h2>
+            <p>支付成功后自动生成电子票，退票后票面状态会同步更新。</p>
+          </div>
+          <button id="passenger-load-tickets" class="secondary-button" type="button">刷新车票</button>
+        </div>
+        <div class="passenger-filter-bar">
+          <label>
+            车票状态
+            <select id="passenger-ticket-status">
+              <option value="">全部车票</option>
+              <option value="ISSUED">有效票</option>
+              <option value="REFUNDED">已退票</option>
+              <option value="CANCELLED">已取消</option>
+            </select>
+          </label>
+        </div>
+        <div id="passenger-ticket-results" class="passenger-ticket-wallet"></div>
+        <div class="pagination">
+          <span id="passenger-ticket-page-info">第 1 / 1 页，共 0 条</span>
+          <div class="inline-actions">
+            <button id="passenger-prev-tickets" class="secondary-button compact-button" type="button">上一页</button>
+            <button id="passenger-next-tickets" class="secondary-button compact-button" type="button">下一页</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="passenger-payments" class="passenger-section passenger-record-section">
+        <div class="passenger-section-head">
+          <div>
+            <p class="eyebrow">支付记录</p>
+            <h2>我的支付流水</h2>
+          </div>
+        </div>
+        <div class="passenger-filter-bar">
+          <label>
+            支付状态
+            <select id="passenger-payment-status">
+              <option value="">全部状态</option>
+              <option value="PENDING">待支付</option>
+              <option value="SUCCESS">支付成功</option>
+              <option value="FAILED">支付失败</option>
+            </select>
+          </label>
+          <button id="passenger-load-payments" class="secondary-button" type="button">查询支付流水</button>
+        </div>
+        <div id="passenger-payment-results" class="passenger-record-list"></div>
+        <div class="pagination">
+          <span id="passenger-payment-page-info">第 1 / 1 页，共 0 条</span>
+          <div class="inline-actions">
+            <button id="passenger-prev-payments" class="secondary-button compact-button" type="button">上一页</button>
+            <button id="passenger-next-payments" class="secondary-button compact-button" type="button">下一页</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="passenger-refunds" class="passenger-section passenger-record-section">
+        <div class="passenger-section-head">
+          <div>
+            <p class="eyebrow">退款记录</p>
+            <h2>我的退款流水</h2>
+          </div>
+        </div>
+        <div class="passenger-filter-bar">
+          <label>
+            退款状态
+            <select id="passenger-refund-status">
+              <option value="">全部状态</option>
+              <option value="PENDING">退款处理中</option>
+              <option value="SUCCESS">退款成功</option>
+              <option value="FAILED">退款失败</option>
+            </select>
+          </label>
+          <button id="passenger-load-refunds" class="secondary-button" type="button">查询退款流水</button>
+        </div>
+        <div id="passenger-refund-results" class="passenger-record-list"></div>
+        <div class="pagination">
+          <span id="passenger-refund-page-info">第 1 / 1 页，共 0 条</span>
+          <div class="inline-actions">
+            <button id="passenger-prev-refunds" class="secondary-button compact-button" type="button">上一页</button>
+            <button id="passenger-next-refunds" class="secondary-button compact-button" type="button">下一页</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="passenger-notifications" class="passenger-section passenger-notification-section">
+        <div class="passenger-section-head">
+          <div>
+            <p class="eyebrow">消息提醒</p>
+            <h2>消息中心</h2>
+            <p>查看订单、支付、出票、退票和退款进度提醒。</p>
+          </div>
+          <div class="inline-actions">
+            <button id="passenger-read-all-notifications" class="secondary-button compact-button" type="button">全部已读</button>
+            <button id="passenger-refresh-notifications" class="secondary-button compact-button" type="button">刷新消息</button>
+          </div>
+        </div>
+        <div class="journey-stat-strip notification-stat-strip">
+          <div class="journey-stat">
+            <span>全部消息</span>
+            <strong id="passenger-notification-total">0</strong>
+          </div>
+          <div class="journey-stat">
+            <span>未读消息</span>
+            <strong id="passenger-notification-unread">0</strong>
+          </div>
+        </div>
+        <div id="passenger-notification-guide" class="notification-guide-panel"></div>
+        <div class="passenger-filter-bar">
+          <label>
+            消息状态
+            <select id="passenger-notification-status">
+              <option value="">全部消息</option>
+              <option value="UNREAD">未读</option>
+              <option value="READ">已读</option>
+            </select>
+          </label>
+          <button id="passenger-load-notifications" class="secondary-button" type="button">查询消息</button>
+        </div>
+        <div id="passenger-notification-results" class="passenger-record-list passenger-notification-list"></div>
+        <div class="pagination">
+          <span id="passenger-notification-page-info">第 1 / 1 页，共 0 条</span>
+          <div class="inline-actions">
+            <button id="passenger-prev-notifications" class="secondary-button compact-button" type="button">上一页</button>
+            <button id="passenger-next-notifications" class="secondary-button compact-button" type="button">下一页</button>
+          </div>
+        </div>
+      </section>
+      </main>
+    </div>
+  </div>
+
+  <div id="passenger-buy-modal" class="modal-backdrop" aria-hidden="true">
+    <div class="purchase-modal passenger-purchase-modal" role="dialog" aria-modal="true" aria-labelledby="passenger-buy-modal-title">
+      <button id="passenger-buy-modal-close" class="modal-close" type="button" aria-label="关闭购票弹窗"></button>
+      <div class="modal-head">
+        <p class="eyebrow">购票确认</p>
+        <h2 id="passenger-buy-modal-title">确认购票信息</h2>
+        <p>确认车次、席别、票价和余票后填写乘客信息。提交后系统将创建待支付订单并锁定库存。</p>
+      </div>
+      <div id="passenger-buy-summary" class="buy-summary"></div>
+      <form id="passenger-buy-form" class="buy-form">
+        <label class="buy-seat-field">
+          选择席别
+          <select id="passenger-buy-seat-type"></select>
+        </label>
+        <label>
+          选择常用乘车人
+          <select id="passenger-buy-traveler">
+            <option value="">手动填写乘车人</option>
+          </select>
+        </label>
+        <div class="form-grid">
+          <label>
+            乘客姓名
+            <input id="passenger-buy-name" type="text" maxlength="64" placeholder="请输入乘客姓名" autocomplete="name" required>
+          </label>
+          <label>
+            证件类型
+            <select id="passenger-buy-id-type">
+              <option value="ID_CARD">居民身份证</option>
+              <option value="PASSPORT">护照</option>
+              <option value="OTHER">其他证件</option>
+            </select>
+          </label>
+          <label>
+            证件号
+            <input id="passenger-buy-id-card" type="text" maxlength="32" placeholder="请输入证件号" autocomplete="off" required>
+          </label>
+          <label>
+            手机号
+            <input id="passenger-buy-phone" type="text" maxlength="32" placeholder="请输入手机号" autocomplete="tel">
+          </label>
+        </div>
+        <div id="passenger-buy-error" class="form-error" aria-live="polite"></div>
+        <div class="modal-actions">
+          <button id="passenger-buy-cancel" class="ghost-button" type="button">取消</button>
+          <button id="passenger-buy-confirm" class="primary-button" type="submit">确认下单</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="passenger-change-modal" class="modal-backdrop" aria-hidden="true">
+    <div class="purchase-modal passenger-change-modal" role="dialog" aria-modal="true" aria-labelledby="passenger-change-modal-title">
+      <button id="passenger-change-modal-close" class="modal-close" type="button" aria-label="关闭改签弹窗"></button>
+      <div class="modal-head">
+        <p class="eyebrow">改签办理</p>
+        <h2 id="passenger-change-modal-title">选择新的车次</h2>
+        <p>改签会锁定新车次库存。若新票更贵，需要完成新票支付；若新票更便宜，系统会生成差额退款流水。</p>
+      </div>
+      <div id="passenger-change-summary" class="buy-summary"></div>
+      <form id="passenger-change-form" class="buy-form">
+        <div class="form-grid">
+          <label>
+            新乘车日期
+            <input id="passenger-change-date" type="date">
+          </label>
+          <label>
+            改签原因
+            <input id="passenger-change-reason" type="text" maxlength="120" placeholder="例如：行程调整">
+          </label>
+        </div>
+        <div class="inline-actions">
+          <button id="passenger-change-load-trains" class="secondary-button" type="button">加载可改签车次</button>
+        </div>
+        <div id="passenger-change-candidates" class="change-candidate-list"></div>
+        <div id="passenger-change-error" class="form-error" aria-live="polite"></div>
+        <div class="modal-actions">
+          <button id="passenger-change-cancel" class="ghost-button" type="button">取消</button>
+          <button id="passenger-change-confirm" class="primary-button" type="submit">提交改签</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="passenger-onboarding-modal" class="modal-backdrop" aria-hidden="true">
+    <div class="purchase-modal onboarding-choice-modal" role="dialog" aria-modal="true" aria-labelledby="passenger-onboarding-modal-title">
+      <button id="passenger-onboarding-modal-close" class="modal-close" type="button" aria-label="关闭引导选择"></button>
+      <div class="modal-head">
+        <p class="eyebrow">新用户引导</p>
+        <h2 id="passenger-onboarding-modal-title">需要首单引导吗？</h2>
+        <p>可以一步步带你完成添加乘车人、查询车次、下单支付和查看电子票。也可以先跳过，直接开始查票。</p>
+      </div>
+      <div class="onboarding-choice-actions">
+        <button id="passenger-onboarding-skip" class="ghost-button" type="button">暂时不用</button>
+        <button id="passenger-onboarding-start" class="primary-button" type="button">需要引导</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="passenger-toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="./login-transition.js?v=20260702-liquid-canvas-v11"></script>
+  <script src="./passenger.js?v=20260701-login-transition-v6"></script>
+</body>
+</html>

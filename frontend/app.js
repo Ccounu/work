@@ -1,0 +1,3453 @@
+const API_BASE =
+  window.RAILWAY_API_BASE ||
+  (["localhost", "127.0.0.1"].includes(window.location.hostname)
+    ? "http://localhost:8080/api"
+    : "/api");
+
+const state = {
+  stations: [],
+  auth: loadStoredAuth(),
+  orderPage: {
+    page: 0,
+    size: 10,
+    totalPages: 0,
+    totalElements: 0,
+    first: true,
+    last: true,
+  },
+  paymentPage: {
+    page: 0,
+    size: 10,
+    totalPages: 0,
+    totalElements: 0,
+    first: true,
+    last: true,
+  },
+  refundPage: {
+    page: 0,
+    size: 10,
+    totalPages: 0,
+    totalElements: 0,
+    first: true,
+    last: true,
+  },
+  ticketChangePage: {
+    page: 0,
+    size: 10,
+    totalPages: 0,
+    totalElements: 0,
+    first: true,
+    last: true,
+  },
+  outboxPage: {
+    page: 0,
+    size: 10,
+    totalPages: 0,
+    totalElements: 0,
+    first: true,
+    last: true,
+  },
+  notificationPage: {
+    page: 0,
+    size: 10,
+    totalPages: 0,
+    totalElements: 0,
+    first: true,
+    last: true,
+  },
+  globalSearch: {
+    loading: false,
+    lastKeyword: "",
+  },
+  riskPage: {
+    page: 0,
+    size: 10,
+    totalPages: 0,
+    totalElements: 0,
+    first: true,
+    last: true,
+  },
+  trainByInventory: {},
+  selectedTrain: null,
+  logs: [],
+  visibleLogCount: 10,
+  openRiskHistoryId: null,
+  activeAdminDetailOrderId: null,
+  navObserver: null,
+  activeSectionId: "",
+  authExpiredNotified: false,
+};
+
+const numberAnimations = new WeakMap();
+
+const HOT_ROUTES = [
+  { from: "BJP", to: "SHH", label: "G101 北京南 → 上海虹桥" },
+  { from: "SHH", to: "BJP", label: "G102 上海虹桥 → 北京南" },
+  { from: "GZQ", to: "WHN", label: "G606 广州南 → 武汉" },
+  { from: "WHN", to: "CDD", label: "D2201 武汉 → 成都东" },
+  { from: "HFG", to: "SHH", label: "D931 合肥南 → 上海虹桥" },
+];
+
+const elements = {
+  apiStatus: document.querySelector("#api-status"),
+  apiStatusText: document.querySelector("#api-status-text"),
+  totalOrders: document.querySelector("#metric-total-orders"),
+  pendingOrders: document.querySelector("#metric-pending-orders"),
+  paidOrders: document.querySelector("#metric-paid-orders"),
+  closedOrders: document.querySelector("#metric-closed-orders"),
+  refundedOrders: document.querySelector("#metric-refunded-orders"),
+  refundRate: document.querySelector("#metric-refund-rate"),
+  riskRate: document.querySelector("#metric-risk-rate"),
+  openRisks: document.querySelector("#metric-open-risks"),
+  cacheMode: document.querySelector("#cache-mode"),
+  cacheTtl: document.querySelector("#cache-ttl"),
+  cacheHitCount: document.querySelector("#cache-hit-count"),
+  cacheMissCount: document.querySelector("#cache-miss-count"),
+  cacheEvictCount: document.querySelector("#cache-evict-count"),
+  cacheFallback: document.querySelector("#cache-fallback"),
+  rateLimitMode: document.querySelector("#rate-limit-mode"),
+  rateLimitBlocked: document.querySelector("#rate-limit-blocked"),
+  rateLimitRules: document.querySelector("#rate-limit-rules"),
+  popularTrains: document.querySelector("#popular-trains"),
+  adminWorkbenchSummary: document.querySelector("#admin-workbench-summary"),
+  adminWorkbenchList: document.querySelector("#admin-workbench-list"),
+  fromStation: document.querySelector("#from-station"),
+  toStation: document.querySelector("#to-station"),
+  travelDate: document.querySelector("#travel-date"),
+  showAvailableTrains: document.querySelector("#show-available-trains"),
+  showHotRoutes: document.querySelector("#show-hot-routes"),
+  hotRouteShortcuts: document.querySelector("#hot-route-shortcuts"),
+  trainResults: document.querySelector("#train-results"),
+  orderResults: document.querySelector("#order-results"),
+  orderUserId: document.querySelector("#order-user-id"),
+  orderStatus: document.querySelector("#order-status"),
+  orderNo: document.querySelector("#order-no"),
+  orderFromDate: document.querySelector("#order-from-date"),
+  orderToDate: document.querySelector("#order-to-date"),
+  orderPageInfo: document.querySelector("#order-page-info"),
+  prevOrders: document.querySelector("#prev-orders"),
+  nextOrders: document.querySelector("#next-orders"),
+  paymentOrderId: document.querySelector("#payment-order-id"),
+  paymentStatus: document.querySelector("#payment-status"),
+  paymentNoFilter: document.querySelector("#payment-no-filter"),
+  paymentResults: document.querySelector("#payment-results"),
+  paymentPageInfo: document.querySelector("#payment-page-info"),
+  prevPayments: document.querySelector("#prev-payments"),
+  nextPayments: document.querySelector("#next-payments"),
+  refundOrderId: document.querySelector("#refund-order-id"),
+  refundStatus: document.querySelector("#refund-status"),
+  refundNoFilter: document.querySelector("#refund-no-filter"),
+  refundResults: document.querySelector("#refund-results"),
+  refundPageInfo: document.querySelector("#refund-page-info"),
+  prevRefunds: document.querySelector("#prev-refunds"),
+  nextRefunds: document.querySelector("#next-refunds"),
+  ticketChangeStatus: document.querySelector("#ticket-change-status"),
+  ticketChangeNo: document.querySelector("#ticket-change-no"),
+  ticketChangeUserId: document.querySelector("#ticket-change-user-id"),
+  ticketChangeResults: document.querySelector("#ticket-change-results"),
+  ticketChangePageInfo: document.querySelector("#ticket-change-page-info"),
+  prevTicketChanges: document.querySelector("#prev-ticket-changes"),
+  nextTicketChanges: document.querySelector("#next-ticket-changes"),
+  outboxStatus: document.querySelector("#outbox-status"),
+  outboxEventType: document.querySelector("#outbox-event-type"),
+  outboxResults: document.querySelector("#outbox-results"),
+  outboxPageInfo: document.querySelector("#outbox-page-info"),
+  prevOutbox: document.querySelector("#prev-outbox"),
+  nextOutbox: document.querySelector("#next-outbox"),
+  outboxSummaryTotal: document.querySelector("#outbox-summary-total"),
+  outboxSummaryPending: document.querySelector("#outbox-summary-pending"),
+  outboxSummaryProcessing: document.querySelector("#outbox-summary-processing"),
+  outboxSummaryDone: document.querySelector("#outbox-summary-done"),
+  outboxSummaryFailed: document.querySelector("#outbox-summary-failed"),
+  outboxSummaryFailureRate: document.querySelector("#outbox-summary-failure-rate"),
+  outboxSummaryBacklog: document.querySelector("#outbox-summary-backlog"),
+  outboxTypeSummary: document.querySelector("#outbox-type-summary"),
+  outboxStatusSummary: document.querySelector("#outbox-status-summary"),
+  globalSearchKeyword: document.querySelector("#global-search-keyword"),
+  globalSearchTypes: document.querySelector("#global-search-types"),
+  globalSearchTypeTrigger: document.querySelector("#global-search-type-trigger"),
+  globalSearchTypeLabel: document.querySelector("[data-multi-select-label]"),
+  globalSearchTypeMenu: document.querySelector("[data-multi-select='global-search-types'] .multi-select-menu"),
+  globalSearchLimit: document.querySelector("#global-search-limit"),
+  globalSearchTrace: document.querySelector("#global-search-trace"),
+  globalSearchInfo: document.querySelector("#global-search-info"),
+  globalSearchResults: document.querySelector("#global-search-results"),
+  notificationStatus: document.querySelector("#notification-status"),
+  notificationType: document.querySelector("#notification-type"),
+  notificationOrderNo: document.querySelector("#notification-order-no"),
+  notificationUserId: document.querySelector("#notification-user-id"),
+  notificationResults: document.querySelector("#notification-results"),
+  notificationPageInfo: document.querySelector("#notification-page-info"),
+  prevNotifications: document.querySelector("#prev-notifications"),
+  nextNotifications: document.querySelector("#next-notifications"),
+  notificationSummaryTotal: document.querySelector("#notification-summary-total"),
+  notificationSummaryUnread: document.querySelector("#notification-summary-unread"),
+  notificationSummaryRead: document.querySelector("#notification-summary-read"),
+  notificationSummaryLatest: document.querySelector("#notification-summary-latest"),
+  notificationTypeSummary: document.querySelector("#notification-type-summary"),
+  notificationStatusSummary: document.querySelector("#notification-status-summary"),
+  notificationTypeChart: document.querySelector("#notification-type-chart"),
+  notificationStatusChart: document.querySelector("#notification-status-chart"),
+  notificationTypeTable: document.querySelector("#notification-type-table"),
+  notificationStatusTable: document.querySelector("#notification-status-table"),
+  riskStatus: document.querySelector("#risk-status"),
+  riskScene: document.querySelector("#risk-scene"),
+  riskUserId: document.querySelector("#risk-user-id"),
+  riskOrderNo: document.querySelector("#risk-order-no"),
+  riskFromDate: document.querySelector("#risk-from-date"),
+  riskToDate: document.querySelector("#risk-to-date"),
+  riskPageInfo: document.querySelector("#risk-page-info"),
+  prevRisks: document.querySelector("#prev-risks"),
+  nextRisks: document.querySelector("#next-risks"),
+  riskSummaryTotal: document.querySelector("#risk-summary-total"),
+  riskSummaryPending: document.querySelector("#risk-summary-pending"),
+  riskSummaryConfirmed: document.querySelector("#risk-summary-confirmed"),
+  riskSummaryFalsePositive: document.querySelector("#risk-summary-false-positive"),
+  riskSummaryClosed: document.querySelector("#risk-summary-closed"),
+  riskSummaryCompletionRate: document.querySelector("#risk-summary-completion-rate"),
+  riskSummaryFalsePositiveRate: document.querySelector("#risk-summary-false-positive-rate"),
+  riskSummaryConfirmedRate: document.querySelector("#risk-summary-confirmed-rate"),
+  riskStatusSummary: document.querySelector("#risk-status-summary"),
+  riskSceneSummary: document.querySelector("#risk-scene-summary"),
+  riskList: document.querySelector("#risk-list"),
+  logList: document.querySelector("#log-list"),
+  showMoreLogs: document.querySelector("#show-more-logs"),
+  collapseLogs: document.querySelector("#collapse-logs"),
+  logDisplayInfo: document.querySelector("#log-display-info"),
+  authRole: document.querySelector("#auth-role"),
+  authUser: document.querySelector("#auth-user"),
+  loginForm: document.querySelector("#login-form"),
+  loginUsername: document.querySelector("#login-username"),
+  loginPassword: document.querySelector("#login-password"),
+  logoutButton: document.querySelector("#logout-button"),
+  buyModal: document.querySelector("#buy-modal"),
+  buyModalClose: document.querySelector("#buy-modal-close"),
+  buyModalCancel: document.querySelector("#buy-modal-cancel"),
+  buyForm: document.querySelector("#buy-form"),
+  buySummary: document.querySelector("#buy-summary"),
+  buyPassengerName: document.querySelector("#buy-passenger-name"),
+  buyPassengerIdCard: document.querySelector("#buy-passenger-id-card"),
+  buyError: document.querySelector("#buy-error"),
+  buyConfirm: document.querySelector("#buy-confirm"),
+  toast: document.querySelector("#toast"),
+};
+
+document.querySelector("#refresh-dashboard").addEventListener("click", refreshAll);
+document.querySelector("#refresh-workbench").addEventListener("click", loadAdminWorkbench);
+document.querySelector("#search-form").addEventListener("submit", event => {
+  event.preventDefault();
+  searchTrains();
+});
+elements.showAvailableTrains.addEventListener("click", loadAvailableTrains);
+elements.showHotRoutes.addEventListener("click", () => {
+  revealHotRoutes();
+  showToast("已显示热门线路快捷入口");
+});
+document.querySelector("#load-orders").addEventListener("click", loadOrders);
+document.querySelector("#reset-orders").addEventListener("click", resetOrderFilters);
+elements.prevOrders.addEventListener("click", () => changeOrderPage(-1));
+elements.nextOrders.addEventListener("click", () => changeOrderPage(1));
+document.querySelector("#create-payment").addEventListener("click", createPaymentFromInput);
+document.querySelector("#load-payments").addEventListener("click", loadPayments);
+elements.prevPayments.addEventListener("click", () => changePaymentPage(-1));
+elements.nextPayments.addEventListener("click", () => changePaymentPage(1));
+document.querySelector("#load-refunds").addEventListener("click", loadRefunds);
+document.querySelector("#reset-refunds").addEventListener("click", resetRefundFilters);
+elements.prevRefunds.addEventListener("click", () => changeRefundPage(-1));
+elements.nextRefunds.addEventListener("click", () => changeRefundPage(1));
+document.querySelector("#load-ticket-changes").addEventListener("click", loadTicketChanges);
+document.querySelector("#reset-ticket-changes").addEventListener("click", resetTicketChangeFilters);
+elements.prevTicketChanges.addEventListener("click", () => changeTicketChangePage(-1));
+elements.nextTicketChanges.addEventListener("click", () => changeTicketChangePage(1));
+document.querySelector("#load-outbox-events").addEventListener("click", loadOutboxEvents);
+document.querySelector("#dispatch-outbox-events").addEventListener("click", dispatchOutboxEvents);
+document.querySelector("#retry-failed-outbox-events").addEventListener("click", retryFailedOutboxEvents);
+elements.prevOutbox.addEventListener("click", () => changeOutboxPage(-1));
+elements.nextOutbox.addEventListener("click", () => changeOutboxPage(1));
+document.querySelector("#run-global-search").addEventListener("click", runGlobalSearch);
+document.querySelector("#clear-global-search").addEventListener("click", clearGlobalSearch);
+elements.globalSearchKeyword.addEventListener("keydown", event => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    runGlobalSearch();
+  }
+});
+document.querySelector("#load-notifications").addEventListener("click", loadNotifications);
+elements.prevNotifications.addEventListener("click", () => changeNotificationPage(-1));
+elements.nextNotifications.addEventListener("click", () => changeNotificationPage(1));
+document.querySelector("#load-risks").addEventListener("click", loadRisks);
+document.querySelector("#reset-risks").addEventListener("click", resetRiskFilters);
+elements.prevRisks.addEventListener("click", () => changeRiskPage(-1));
+elements.nextRisks.addEventListener("click", () => changeRiskPage(1));
+elements.showMoreLogs.addEventListener("click", showMoreLogs);
+elements.collapseLogs.addEventListener("click", collapseLogs);
+elements.loginForm.addEventListener("submit", event => {
+  event.preventDefault();
+  login();
+});
+elements.logoutButton.addEventListener("click", logout);
+elements.buyForm.addEventListener("submit", event => {
+  event.preventDefault();
+  submitPurchase();
+});
+elements.buyModalCancel.addEventListener("click", closePurchaseModal);
+elements.buyModalClose.addEventListener("click", closePurchaseModal);
+elements.buyModal.addEventListener("click", event => {
+  if (event.target === elements.buyModal) {
+    closePurchaseModal();
+  }
+});
+window.addEventListener("keydown", event => {
+  if (event.key === "Escape" && elements.buyModal.classList.contains("show")) {
+    closePurchaseModal();
+  }
+});
+window.addEventListener("hashchange", updateActiveNav);
+
+init();
+
+async function init() {
+  applyCaptureMode();
+  setupNavigation();
+  setupScrollSpy();
+  setupDashboardDrilldowns();
+  setupGlobalSearchTypePicker();
+  renderAuthState();
+  elements.travelDate.value = new Date().toISOString().slice(0, 10);
+  await checkHealth();
+  await loadStations();
+  renderHotRoutes(false);
+  await refreshAll();
+  scrollToInitialHash();
+}
+
+async function login() {
+  try {
+    const auth = await request("/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: elements.loginUsername.value,
+        password: elements.loginPassword.value,
+      }),
+    }, false);
+    state.auth = auth;
+    state.authExpiredNotified = false;
+    localStorage.setItem("railway-auth", JSON.stringify(auth));
+    let revealedTarget = false;
+    let refreshPromise = Promise.resolve();
+    const revealTarget = () => {
+      if (revealedTarget) {
+        return;
+      }
+      revealedTarget = true;
+      renderAuthState();
+      refreshPromise = refreshAll();
+    };
+    const transition = typeof window.playRailwayLoginTransition === "function"
+      ? window.playRailwayLoginTransition({
+          variant: "admin",
+          label: "\u94c1\u8def\u5ba2\u8fd0\u7968\u52a1",
+          destination: "\u7ba1\u7406\u7aef",
+          prepareReveal: revealTarget,
+        })
+      : Promise.resolve();
+    await transition;
+    revealTarget();
+    await refreshPromise;
+    showToast("登录成功，当前角色：" + roleText(auth.role));
+  } catch (error) {
+    showToast(error.message || "登录失败");
+  }
+}
+
+function logout() {
+  state.auth = null;
+  state.authExpiredNotified = false;
+  clearStoredAuth();
+  renderAuthState();
+  showToast("已退出登录");
+  refreshAll();
+}
+
+function renderAuthState() {
+  if (state.auth && state.auth.token) {
+    document.body.dataset.authenticated = "true";
+    elements.authRole.textContent = roleText(state.auth.role);
+    elements.authUser.textContent = state.auth.displayName || state.auth.username;
+    return;
+  }
+  document.body.dataset.authenticated = "false";
+  elements.authRole.textContent = "未登录";
+  elements.authUser.textContent = "访客模式";
+}
+
+async function checkHealth() {
+  try {
+    const health = await request("/health", {}, false);
+    if (elements.apiStatus && elements.apiStatusText) {
+      elements.apiStatus.className = "status-dot ok";
+      elements.apiStatusText.textContent = `${health.service} 已连接`;
+    }
+  } catch (error) {
+    if (elements.apiStatus && elements.apiStatusText) {
+      elements.apiStatus.className = "status-dot fail";
+      elements.apiStatusText.textContent = "后端未连接";
+    }
+    showToast(error.message || "无法连接后端服务，请确认 Spring Boot 后端已启动");
+  }
+}
+
+async function loadStations() {
+  try {
+    state.stations = await request("/stations");
+    renderStationOptions();
+  } catch (error) {
+    state.stations = [
+      { code: "BJP", name: "北京南" },
+      { code: "SHH", name: "上海虹桥" },
+      { code: "GZQ", name: "广州南" },
+      { code: "WHN", name: "武汉" },
+    ];
+    renderStationOptions();
+  }
+}
+
+function renderStationOptions() {
+  const options = state.stations
+    .map(station => `<option value="${station.code}">${station.name}</option>`)
+    .join("");
+  elements.fromStation.innerHTML = options;
+  elements.toStation.innerHTML = options;
+  elements.fromStation.value = "BJP";
+  elements.toStation.value = "SHH";
+}
+
+function renderHotRoutes(expanded) {
+  if (!elements.hotRouteShortcuts) {
+    return;
+  }
+  elements.hotRouteShortcuts.classList.toggle("expanded", Boolean(expanded));
+  elements.hotRouteShortcuts.innerHTML = HOT_ROUTES
+    .map(route => `
+      <button class="route-chip" type="button" data-hot-from="${route.from}" data-hot-to="${route.to}">
+        ${escapeHtml(route.label)}
+      </button>
+    `)
+    .join("");
+  elements.hotRouteShortcuts.querySelectorAll("[data-hot-from]").forEach(button => {
+    button.addEventListener("click", () => applyHotRoute(button.dataset.hotFrom, button.dataset.hotTo));
+  });
+}
+
+function revealHotRoutes() {
+  renderHotRoutes(true);
+  elements.hotRouteShortcuts.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+async function applyHotRoute(from, to) {
+  elements.fromStation.value = from;
+  elements.toStation.value = to;
+  if (!elements.travelDate.value) {
+    elements.travelDate.value = new Date().toISOString().slice(0, 10);
+  }
+  await searchTrains();
+  showToast("已切换到热门线路并完成查询");
+}
+
+async function refreshAll() {
+  await Promise.all([
+    loadDashboard(),
+    loadSystemStats(),
+    searchTrains(),
+    loadOrders(),
+    loadPayments(),
+    loadRefunds(),
+    loadTicketChanges(),
+    loadOutboxSummary(),
+    loadOutboxEvents(),
+    loadNotificationSummary(),
+    loadNotifications(),
+    loadRisks(),
+    loadRiskSummary(),
+    loadLogs(),
+  ]);
+}
+
+async function loadSystemStats() {
+  await Promise.all([
+    loadCacheStats(),
+    loadRateLimitStats(),
+  ]);
+}
+
+async function loadCacheStats() {
+  try {
+    const stats = await request("/cache/train-search");
+    elements.cacheMode.textContent = stats.cacheMode || stats.configuredMode || "-";
+    elements.cacheTtl.textContent = stats.ttlSeconds ? `${stats.ttlSeconds}s` : "-";
+    elements.cacheHitCount.textContent = stats.hitCount ?? 0;
+    elements.cacheMissCount.textContent = stats.missCount ?? 0;
+    elements.cacheEvictCount.textContent = stats.evictCount ?? 0;
+    elements.cacheFallback.textContent = stats.localFallback ? "是" : "否";
+  } catch (error) {
+    elements.cacheMode.textContent = "-";
+    elements.cacheTtl.textContent = "-";
+    elements.cacheFallback.textContent = "需登录";
+  }
+}
+
+async function loadRateLimitStats() {
+  try {
+    const stats = await request("/rate-limit/summary");
+    elements.rateLimitMode.textContent = stats.mode || stats.configuredMode || "-";
+    elements.rateLimitBlocked.textContent = stats.blockedCount ?? 0;
+    renderRateLimitRules(stats.rules || {});
+  } catch (error) {
+    elements.rateLimitMode.textContent = "-";
+    elements.rateLimitBlocked.textContent = "需登录";
+    elements.rateLimitRules.innerHTML = emptyItem("需登录后查看限流规则");
+  }
+}
+
+function renderRateLimitRules(rules) {
+  const entries = Object.entries(rules);
+  if (entries.length === 0) {
+    elements.rateLimitRules.innerHTML = emptyItem("暂无限流规则配置");
+    return;
+  }
+  elements.rateLimitRules.innerHTML = entries
+    .map(([name, rule]) => `
+      <div class="event-item">
+        <strong>${escapeHtml(name)}</strong>
+        <span>${rule.limit ?? "-"} 次 / ${rule.windowSeconds ?? "-"} 秒</span>
+      </div>
+    `)
+    .join("");
+}
+
+async function loadDashboard() {
+  try {
+    const summary = await request("/dashboard/summary");
+    animateNumber(elements.totalOrders, summary.totalOrderCount ?? summary.totalOrders);
+    animateNumber(elements.pendingOrders, summary.pendingPaymentOrderCount ?? 0);
+    animateNumber(elements.paidOrders, summary.paidOrderCount ?? summary.paidOrders);
+    animateNumber(elements.closedOrders, summary.closedOrderCount ?? 0);
+    animateNumber(elements.refundedOrders, summary.refundedOrderCount ?? summary.refundedOrders);
+    animateNumber(elements.refundRate, Number(summary.refundRate || 0), { formatter: formatPercent });
+    animateNumber(elements.riskRate, Number(summary.riskRate || 0), { formatter: formatPercent });
+    animateNumber(elements.openRisks, summary.unhandledRiskCount ?? summary.openRiskEvents);
+    renderPopularTrains(summary.popularTrains || []);
+    await loadAdminWorkbench();
+  } catch (error) {
+    renderPopularTrains([]);
+    renderAdminWorkbench(null);
+  }
+}
+
+function renderPopularTrains(items) {
+  if (!elements.popularTrains) {
+    return;
+  }
+  if (items.length === 0) {
+    elements.popularTrains.innerHTML = emptyItem("暂无订单聚合数据");
+    return;
+  }
+  const maxCount = Math.max(...items.map(item => Number(item.orderCount || 0)), 1);
+  elements.popularTrains.innerHTML = items
+    .map(item => `
+      <div class="event-item progress-row">
+        <div class="event-header">
+          <strong>${item.trainNo}</strong>
+          <span class="status">${item.orderCount} 单</span>
+        </div>
+        <div class="bar-track" aria-hidden="true">
+          <span style="--target-width: ${Math.max(8, (Number(item.orderCount || 0) / maxCount) * 100)}%"></span>
+        </div>
+      </div>
+    `)
+    .join("");
+}
+
+async function searchTrains() {
+  const from = elements.fromStation.value;
+  const to = elements.toStation.value;
+  const date = elements.travelDate.value;
+  if (!from || !to || !date) {
+    renderTrainEmpty("请选择出发站、到达站和乘车日期后查询，也可以直接查看全部可购车次。");
+    return;
+  }
+
+  try {
+    const trains = await request(`/trains/search?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${encodeURIComponent(date)}`);
+    renderTrains(trains);
+  } catch (error) {
+    renderTrainEmpty(error.message || "无法获取车次数据");
+  }
+}
+
+async function loadAvailableTrains() {
+  try {
+    const params = new URLSearchParams();
+    if (elements.travelDate.value) {
+      params.set("travelDate", elements.travelDate.value);
+    }
+    params.set("page", "0");
+    params.set("size", "80");
+    const trains = await request(`/trains/available?${params.toString()}`);
+    renderTrains(trains, "全部可购车次");
+    showToast("已加载全部可购车次");
+  } catch (error) {
+    renderTrainEmpty(error.message || "无法获取可购车次");
+  }
+}
+
+function renderTrains(trains) {
+  if (trains.length === 0) {
+    renderTrainEmpty("当前线路暂无可售车次，可查看全部可购车次或选择热门线路。");
+    return;
+  }
+  state.trainByInventory = {};
+  trains.forEach(train => {
+    state.trainByInventory[String(train.inventoryId)] = train;
+  });
+  elements.trainResults.innerHTML = trains
+    .map(train => `
+      <tr>
+        <td><strong class="train-no">${train.trainNo}</strong></td>
+        <td><span class="route">${train.departureStation} 至 ${train.arrivalStation}</span></td>
+        <td>${formatTime(train.departureTime)} - ${formatTime(train.arrivalTime)}</td>
+        <td>${seatTypeText(train.seatType)}</td>
+        <td><span class="${Number(train.remainingSeats || 0) <= 5 ? "inventory-low" : "inventory-ok"}">${train.remainingSeats}</span></td>
+        <td><span class="money">¥${train.price}</span></td>
+        <td><button class="secondary-button" type="button" data-buy="${train.trainId}" data-inventory="${train.inventoryId}">购票</button></td>
+      </tr>
+    `)
+    .join("");
+
+  document.querySelectorAll("[data-buy]").forEach(button => {
+    button.addEventListener("click", () => openPurchaseModal(button.dataset.inventory));
+  });
+}
+
+function renderTrainEmpty(message) {
+  elements.trainResults.innerHTML = `
+    <tr>
+      <td colspan="7">
+        <div class="empty-action">
+          <strong>${escapeHtml(message)}</strong>
+          <span>建议查看全部可购车次，或使用热门线路快捷入口快速定位有库存的车次。</span>
+          <div class="inline-actions">
+            <button class="secondary-button compact-button" type="button" data-empty-action="available">查看全部可购车次</button>
+            <button class="ghost-button compact-button" type="button" data-empty-action="hot-routes">查看热门线路</button>
+          </div>
+        </div>
+      </td>
+    </tr>
+  `;
+  const availableButton = elements.trainResults.querySelector('[data-empty-action="available"]');
+  const hotRoutesButton = elements.trainResults.querySelector('[data-empty-action="hot-routes"]');
+  availableButton.addEventListener("click", loadAvailableTrains);
+  hotRoutesButton.addEventListener("click", revealHotRoutes);
+}
+
+function openPurchaseModal(inventoryId) {
+  const train = state.trainByInventory[String(inventoryId)];
+  if (!train) {
+    showToast("未找到当前车次库存，请重新查询");
+    return;
+  }
+  state.selectedTrain = train;
+  elements.buySummary.innerHTML = `
+    <div class="buy-route">
+      <strong>${escapeHtml(train.trainNo)}</strong>
+      <span>${escapeHtml(train.departureStation)} → ${escapeHtml(train.arrivalStation)}</span>
+    </div>
+    <div class="buy-detail-grid">
+      <div><span>乘车日期</span><strong>${formatDate(train.travelDate)}</strong></div>
+      <div><span>发车时间</span><strong>${formatTime(train.departureTime)}</strong></div>
+      <div><span>到达时间</span><strong>${formatTime(train.arrivalTime)}</strong></div>
+      <div><span>席别</span><strong>${seatTypeText(train.seatType)}</strong></div>
+      <div><span>票价</span><strong class="money">¥${train.price}</strong></div>
+      <div><span>剩余票数</span><strong>${train.remainingSeats}</strong></div>
+    </div>
+  `;
+  elements.buyPassengerName.value = "";
+  elements.buyPassengerIdCard.value = "";
+  elements.buyError.textContent = "";
+  elements.buyConfirm.disabled = false;
+  elements.buyConfirm.textContent = "确认下单";
+  elements.buyModal.classList.add("show");
+  elements.buyModal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+  window.setTimeout(() => elements.buyPassengerName.focus(), 80);
+}
+
+function closePurchaseModal() {
+  elements.buyModal.classList.remove("show");
+  elements.buyModal.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("modal-open");
+  state.selectedTrain = null;
+}
+
+async function submitPurchase() {
+  const train = state.selectedTrain;
+  if (!train) {
+    return;
+  }
+  const passengerName = elements.buyPassengerName.value.trim();
+  const passengerIdCard = elements.buyPassengerIdCard.value.trim();
+  if (!passengerName || !passengerIdCard) {
+    elements.buyError.textContent = "请完整填写乘客姓名和证件号";
+    return;
+  }
+
+  elements.buyConfirm.disabled = true;
+  elements.buyConfirm.textContent = "下单中...";
+  elements.buyError.textContent = "";
+
+  try {
+    await request("/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: Number(elements.orderUserId.value || 1001),
+        requestId: generateRequestId(),
+        trainId: Number(train.trainId),
+        inventoryId: Number(train.inventoryId),
+        passengerName,
+        passengerIdCard,
+      }),
+    });
+    closePurchaseModal();
+    showToast("订单已创建，库存已锁定，请在 15 分钟内支付");
+    await Promise.all([loadDashboard(), searchTrains(), loadOrders(), loadPayments()]);
+  } catch (error) {
+    elements.buyError.textContent = error.message || "购票失败，请稍后重试";
+    elements.buyConfirm.disabled = false;
+    elements.buyConfirm.textContent = "确认下单";
+  }
+}
+
+async function loadOrders() {
+  state.orderPage.page = 0;
+  await loadOrdersPage();
+}
+
+async function loadOrdersPage() {
+  const path = buildOrderQueryPath();
+  try {
+    const page = await request(path);
+    state.orderPage = {
+      page: page.page,
+      size: page.size,
+      totalPages: page.totalPages,
+      totalElements: page.totalElements,
+      first: page.first,
+      last: page.last,
+    };
+    renderOrders(page.content || []);
+    renderOrderPagination();
+  } catch (error) {
+    elements.orderResults.innerHTML = tableEmpty(8, "无法获取订单数据");
+    renderOrderPagination();
+  }
+}
+
+function renderOrders(orders) {
+  if (orders.length === 0) {
+    elements.orderResults.innerHTML = tableEmpty(8, "暂无订单");
+    return;
+  }
+
+  elements.orderResults.innerHTML = orders
+    .map(order => `
+      <tr>
+        <td><strong>${order.orderNo}</strong></td>
+        <td>${order.userId}</td>
+        <td><span class="train-no">${order.trainNo}</span></td>
+        <td>${order.passengerName}</td>
+        <td>${order.travelDate}</td>
+        <td><span class="money">¥${order.amount}</span></td>
+        <td><span class="status ${orderStatusClass(order.status)}">${statusText(order.status)}</span></td>
+        <td>${renderOrderActions(order)}</td>
+      </tr>
+    `)
+    .join("");
+  decorateAdminOrderDetailButtons(orders);
+
+  document.querySelectorAll("[data-pay]").forEach(button => {
+    button.addEventListener("click", () => payOrder(button.dataset.pay));
+  });
+  document.querySelectorAll("[data-create-payment]").forEach(button => {
+    button.addEventListener("click", () => createPayment(button.dataset.createPayment));
+  });
+  document.querySelectorAll("[data-close-order]").forEach(button => {
+    button.addEventListener("click", () => closeOrder(button.dataset.closeOrder));
+  });
+  document.querySelectorAll("[data-refund]").forEach(button => {
+    button.addEventListener("click", () => refundOrder(button.dataset.refund));
+  });
+}
+
+function decorateAdminOrderDetailButtons(orders) {
+  const rows = elements.orderResults.querySelectorAll("tr");
+  rows.forEach((row, index) => {
+    const order = orders[index];
+    const actions = row.querySelector("td:last-child .inline-actions") || row.querySelector("td:last-child");
+    if (!order || !actions || actions.querySelector("[data-admin-order-detail]")) {
+      return;
+    }
+    const button = document.createElement("button");
+    button.className = "secondary-button compact-button";
+    button.type = "button";
+    button.textContent = "详情";
+    button.dataset.adminOrderDetail = String(order.id);
+    button.addEventListener("click", () => openAdminOrderDetail(order.id));
+    actions.insertBefore(button, actions.firstChild);
+  });
+}
+
+async function openAdminOrderDetail(orderId) {
+  try {
+    state.activeAdminDetailOrderId = orderId;
+    const detail = await request(`/orders/${orderId}/detail`);
+    showAdminOrderDetail(detail);
+  } catch (error) {
+    showToast(error.message || "无法加载订单详情");
+  }
+}
+
+async function refreshAdminFlow(orderId) {
+  const detailOrderId = orderId || state.activeAdminDetailOrderId;
+  await refreshAll();
+  if (detailOrderId) {
+    await openAdminOrderDetail(detailOrderId);
+  }
+}
+
+function showAdminOrderDetail(detail) {
+  const modal = ensureAdminDetailModal();
+  const order = detail.order || {};
+  const ticket = detail.ticket;
+  const payments = detail.payments || [];
+  const refunds = detail.refunds || [];
+  const ticketChanges = detail.ticketChanges || [];
+  const notifications = detail.notifications || [];
+  const risks = detail.risks || [];
+  const outboxEvents = detail.outboxEvents || [];
+  const logs = detail.operationLogs || [];
+  modal.querySelector(".order-detail-body").innerHTML = `
+    <div class="detail-hero admin-investigation-hero">
+      <div>
+        <p class="eyebrow">Transaction Investigation</p>
+        <h2>${escapeHtml(order.orderNo || "-")}</h2>
+        <span>User ${order.userId || "-"} · ${escapeHtml(order.trainNo || "-")} · ${formatDate(order.travelDate)} · ${escapeHtml(order.passengerName || "-")}</span>
+      </div>
+      <div class="detail-amount">
+        <strong>¥${formatAmount(order.amount)}</strong>
+        <span class="status ${orderStatusClass(order.status)}">${statusText(order.status)}</span>
+      </div>
+    </div>
+    ${renderAdminInvestigationSummary(order, ticket, payments, refunds, ticketChanges, notifications, risks, outboxEvents)}
+    ${renderAdminIssueList(order, payments, refunds, ticketChanges, risks, outboxEvents)}
+    ${renderAdminDetailQuickActions(order, payments, refunds, ticketChanges, risks, outboxEvents, notifications)}
+    <section class="detail-section">
+      <h3>电子票 / 行程单</h3>
+      ${ticket ? renderTicketDetail(ticket) : `<div class="detail-empty">暂无电子票。</div>`}
+    </section>
+    <section class="detail-section">
+      <h3>支付与退款</h3>
+      <div class="detail-two-column">
+        <div>${renderDetailRecords(payments, payment => `
+          <div class="detail-record"><strong>${escapeHtml(payment.paymentNo)}</strong><span>${paymentStatusText(payment.status)} · ¥${formatAmount(payment.amount)}</span></div>
+        `, "暂无支付记录")}</div>
+        <div>${renderDetailRecords(refunds, refund => `
+          <div class="detail-record"><strong>${escapeHtml(refund.refundNo)}</strong><span>${refundStatusText(refund.status)} · ¥${formatAmount(refund.amount)}</span></div>
+        `, "暂无退款记录")}</div>
+      </div>
+    </section>
+    <section class="detail-section">
+      <h3>改签链路</h3>
+      ${renderDetailRecords(ticketChanges, change => `
+        <div class="detail-record ticket-change-detail-record">
+          <strong>${escapeHtml(change.changeNo)}</strong>
+          <span>${escapeHtml(change.originalTrainNo || "-")} → ${escapeHtml(change.newTrainNo || "-")} · ${changeStatusText(change.status)} · ${formatSignedAmount(change.priceDifference)}</span>
+        </div>
+      `, "暂无改签记录")}
+    </section>
+    <section class="detail-section">
+      <h3>风险与事件链路</h3>
+      <div class="detail-two-column">
+        <div>${renderDetailRecords(risks, risk => `
+          <div class="detail-record"><strong>${riskTypeText(risk.riskType)} / ${riskStatusText(risk.status)}</strong><span>${escapeHtml(risk.reason || "-")}</span></div>
+        `, "暂无风险事件")}</div>
+        <div>${renderDetailRecords(outboxEvents, event => `
+          <div class="detail-record"><strong>${eventTypeText(event.eventType)}</strong><span>${outboxStatusText(event.status)} · ${formatDateTime(event.createdAt) || "-"}</span></div>
+        `, "暂无事件记录")}</div>
+      </div>
+    </section>
+    <section class="detail-section">
+      <h3>操作日志</h3>
+      ${renderDetailRecords(logs, log => `
+        <div class="detail-record"><strong>${operationActionText(log.action)}</strong><span>${escapeHtml(log.operator)} · ${formatDateTime(log.createdAt) || "-"} · ${escapeHtml(log.detail || "")}</span></div>
+      `, "暂无订单操作日志")}
+    </section>
+  `;
+  modal.querySelector(".order-detail-body").insertAdjacentHTML("afterbegin", `
+    <section class="detail-section transaction-chain-section">
+      <h3>交易链路排查</h3>
+      ${renderAdminTransactionChain(order, ticket, payments, refunds, ticketChanges, notifications, risks, outboxEvents, logs)}
+    </section>
+  `);
+  bindAdminDetailActions(modal);
+  openDetailModal(modal);
+}
+
+function renderAdminInvestigationSummary(order, ticket, payments, refunds, ticketChanges, notifications, risks, outboxEvents) {
+  const latestPayment = payments[0];
+  const latestRefund = refunds[0];
+  const latestChange = ticketChanges[0];
+  const failedOutbox = outboxEvents.filter(event => event.status === "FAILED").length;
+  const pendingRisk = risks.filter(risk => risk.status === "PENDING").length;
+  const unreadNotice = notifications.filter(notification => notification.status === "UNREAD").length;
+  const cards = [
+    { label: "订单", value: statusText(order.status), note: order.orderNo || "-", className: orderStatusClass(order.status) },
+    { label: "电子票", value: ticket ? ticketStatusText(ticket.status) : "未出票", note: ticket ? ticket.ticketNo : "无票据", className: ticket ? ticketStatusClass(ticket.status) : "" },
+    { label: "支付", value: latestPayment ? paymentStatusText(latestPayment.status) : "无流水", note: latestPayment ? latestPayment.paymentNo : "待生成", className: latestPayment ? paymentStatusClass(latestPayment.status) : "" },
+    { label: "退款", value: latestRefund ? refundStatusText(latestRefund.status) : "无退款", note: latestRefund ? latestRefund.refundNo : "未退票", className: latestRefund ? refundStatusClass(latestRefund.status) : "" },
+    { label: "改签", value: latestChange ? changeStatusText(latestChange.status) : "无改签", note: latestChange ? latestChange.changeNo : "未发起", className: latestChange ? changeStatusClass(latestChange.status) : "" },
+    { label: "异常", value: `${pendingRisk + failedOutbox} 项`, note: `风险 ${pendingRisk} / 事件 ${failedOutbox} / 未读 ${unreadNotice}`, className: pendingRisk + failedOutbox > 0 ? "failed" : "" },
+  ];
+  return `
+    <section class="detail-status-grid admin-investigation-summary" aria-label="交易链路状态总览">
+      ${cards.map(card => `
+        <article class="${card.className || ""}">
+          <span>${escapeHtml(card.label)}</span>
+          <strong>${escapeHtml(card.value)}</strong>
+          <small>${escapeHtml(card.note)}</small>
+        </article>
+      `).join("")}
+    </section>
+  `;
+}
+
+function renderAdminIssueList(order, payments, refunds, ticketChanges, risks, outboxEvents) {
+  const issues = [];
+  payments.filter(payment => payment.status === "FAILED").forEach(payment => {
+    issues.push({ tone: "danger", title: "支付失败", text: `${payment.paymentNo} / ${payment.callbackMessage || "需要确认支付回调或重新支付"}` });
+  });
+  refunds.filter(refund => refund.status !== "SUCCESS").forEach(refund => {
+    issues.push({ tone: refund.status === "FAILED" ? "danger" : "warn", title: `退款${refundStatusText(refund.status)}`, text: `${refund.refundNo} / ${refund.callbackMessage || "等待退款回调或人工确认"}` });
+  });
+  ticketChanges.filter(change => change.status !== "SUCCESS").forEach(change => {
+    issues.push({ tone: change.status === "FAILED" ? "danger" : "warn", title: `改签${changeStatusText(change.status)}`, text: `${change.changeNo} / ${change.failureReason || "等待乘客补差或系统完成"}` });
+  });
+  risks.filter(risk => risk.status === "PENDING").forEach(risk => {
+    issues.push({ tone: "danger", title: "风险待处置", text: `${riskTypeText(risk.riskType)} / ${risk.reason || order.orderNo || "-"}` });
+  });
+  outboxEvents.filter(event => event.status === "FAILED").forEach(event => {
+    issues.push({ tone: "warn", title: "事件处理失败", text: `${eventTypeText(event.eventType)} / ${event.lastError || "可在事件中心重试"}` });
+  });
+  if (!issues.length) {
+    return `
+      <section class="admin-issue-strip clear">
+        <strong>当前链路未发现待排查异常</strong>
+        <span>订单、支付、票据、退款、改签、事件链路均可在本面板核对。</span>
+      </section>
+    `;
+  }
+  return `
+    <section class="admin-issue-strip">
+      <strong>需要关注 ${issues.length} 项</strong>
+      <div>
+        ${issues.slice(0, 5).map(issue => `
+          <span class="${issue.tone}">
+            <b>${escapeHtml(issue.title)}</b>
+            ${escapeHtml(issue.text)}
+          </span>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderAdminDetailQuickActions(order, payments, refunds, ticketChanges, risks, outboxEvents, notifications) {
+  const latestPayment = payments[0];
+  const latestRefund = refunds[0];
+  const latestChange = ticketChanges[0];
+  const hasRisk = risks.length > 0;
+  const hasOutbox = outboxEvents.length > 0;
+  const hasNotice = notifications.length > 0;
+  return `
+    <section class="detail-action-strip admin-investigation-actions" aria-label="交易链路跳转">
+      <div>
+        <strong>排查入口</strong>
+        <span>从订单详情直接打开关联模块，避免在多张列表中重新拼线索。</span>
+      </div>
+      <div class="inline-actions">
+        ${latestPayment ? `<button class="secondary-button compact-button" type="button" data-admin-detail-target="payments" data-admin-detail-order="${order.id}">支付流水</button>` : ""}
+        ${latestRefund ? `<button class="secondary-button compact-button" type="button" data-admin-detail-target="refunds" data-admin-detail-order="${order.id}">退款流水</button>` : ""}
+        ${latestChange ? `<button class="secondary-button compact-button" type="button" data-admin-detail-target="ticket-changes" data-admin-detail-change="${escapeHtml(latestChange.changeNo || "")}">改签记录</button>` : ""}
+        ${hasRisk ? `<button class="secondary-button compact-button" type="button" data-admin-detail-target="risks" data-admin-detail-order-no="${escapeHtml(order.orderNo || "")}">风险事件</button>` : ""}
+        ${hasOutbox ? `<button class="secondary-button compact-button" type="button" data-admin-detail-target="outbox">事件记录</button>` : ""}
+        ${hasNotice ? `<button class="secondary-button compact-button" type="button" data-admin-detail-target="notifications" data-admin-detail-order-no="${escapeHtml(order.orderNo || "")}">通知记录</button>` : ""}
+        <button class="secondary-button compact-button" type="button" data-admin-detail-refresh="${order.id}">刷新链路</button>
+      </div>
+    </section>
+  `;
+}
+
+function bindAdminDetailActions(modal) {
+  modal.querySelectorAll("[data-admin-detail-target]").forEach(button => {
+    button.addEventListener("click", () => {
+      closeDetailModal(modal);
+      openAdminDetailTarget(button);
+    });
+  });
+  modal.querySelectorAll("[data-admin-detail-refresh]").forEach(button => {
+    button.addEventListener("click", () => refreshAdminFlow(button.dataset.adminDetailRefresh));
+  });
+}
+
+function renderAdminTransactionChain(order, ticket, payments, refunds, ticketChanges, notifications, risks, outboxEvents, logs) {
+  const nodes = [{
+    type: "ORDER",
+    title: "订单创建",
+    status: statusText(order.status),
+    time: order.createdAt,
+    detail: order.orderNo || "-",
+  }];
+  if (ticket) {
+    nodes.push({
+      type: "TICKET",
+      title: "电子票",
+      status: ticketStatusText(ticket.status),
+      time: ticket.issuedAt || ticket.createdAt,
+      detail: ticket.ticketNo || "-",
+    });
+  }
+  payments.forEach(payment => nodes.push({
+    type: "PAYMENT",
+    title: "支付流水",
+    status: paymentStatusText(payment.status),
+    time: payment.paidAt || payment.createdAt,
+    detail: `${payment.paymentNo || "-"} / ${formatAmount(payment.amount)}`,
+  }));
+  refunds.forEach(refund => nodes.push({
+    type: "REFUND",
+    title: "退款流水",
+    status: refundStatusText(refund.status),
+    time: refund.refundedAt || refund.createdAt,
+    detail: `${refund.refundNo || "-"} / ${formatAmount(refund.amount)}`,
+  }));
+  ticketChanges.forEach(change => nodes.push({
+    type: "CHANGE",
+    title: "改签记录",
+    status: changeStatusText(change.status),
+    time: change.completedAt || change.updatedAt || change.createdAt,
+    detail: `${change.changeNo || "-"} / ${change.originalTrainNo || "-"} 至 ${change.newTrainNo || "-"}`,
+  }));
+  notifications.forEach(notification => nodes.push({
+    type: "NOTICE",
+    title: "通知",
+    status: notificationStatusText(notification.status),
+    time: notification.createdAt,
+    detail: notification.title || notification.notificationNo || "-",
+  }));
+  risks.forEach(risk => nodes.push({
+    type: "RISK",
+    title: "风险事件",
+    status: riskStatusText(risk.status),
+    time: risk.createdAt,
+    detail: `${riskTypeText(risk.riskType)} / ${risk.reason || "-"}`,
+  }));
+  outboxEvents.slice(0, 8).forEach(event => nodes.push({
+    type: "OUTBOX",
+    title: "事件记录",
+    status: outboxStatusText(event.status),
+    time: event.processedAt || event.createdAt,
+    detail: eventTypeText(event.eventType),
+  }));
+  logs.slice(0, 8).forEach(log => nodes.push({
+    type: "LOG",
+    title: "审计日志",
+    status: log.operator || "-",
+    time: log.createdAt,
+    detail: operationActionText(log.action),
+  }));
+  nodes.sort((left, right) => {
+    const leftTime = left.time ? new Date(left.time).getTime() : Number.MAX_SAFE_INTEGER;
+    const rightTime = right.time ? new Date(right.time).getTime() : Number.MAX_SAFE_INTEGER;
+    return leftTime - rightTime;
+  });
+  return `
+    <div class="admin-chain-board">
+      ${nodes.map(node => `
+        <article class="admin-chain-node ${escapeHtml(node.type.toLowerCase())}">
+          <span>${chainNodeTypeText(node.type)}</span>
+          <strong>${escapeHtml(node.title)}</strong>
+          <small>${escapeHtml(node.status || "-")} / ${escapeHtml(node.detail || "-")}</small>
+          <time>${formatDateTime(node.time) || "-"}</time>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderTicketDetail(ticket) {
+  return `
+    <div class="ticket-itinerary">
+      <div><span>票号</span><strong>${escapeHtml(ticket.ticketNo)}</strong></div>
+      <div><span>线路</span><strong>${escapeHtml(ticket.departureStation)} → ${escapeHtml(ticket.arrivalStation)}</strong></div>
+      <div><span>时间</span><strong>${formatTime(ticket.departureTime)} - ${formatTime(ticket.arrivalTime)}</strong></div>
+      <div><span>乘车人</span><strong>${escapeHtml(ticket.passengerName)} / ${idTypeText(ticket.passengerIdType)} / ${escapeHtml(ticket.passengerIdCardMasked)}</strong></div>
+      <div><span>手机号</span><strong>${escapeHtml(ticket.passengerPhoneMasked || "-")}</strong></div>
+      <div><span>票面状态</span><strong>${ticketStatusText(ticket.status)}</strong></div>
+      <div><span>出票时间</span><strong>${formatDateTime(ticket.issuedAt) || "-"}</strong></div>
+    </div>
+  `;
+}
+
+function renderDetailRecords(records, mapper, emptyText) {
+  if (!records.length) {
+    return `<div class="detail-empty">${escapeHtml(emptyText)}</div>`;
+  }
+  return records.map(mapper).join("");
+}
+
+function ensureAdminDetailModal() {
+  let modal = document.querySelector("#admin-order-detail-modal");
+  if (modal) {
+    return modal;
+  }
+  modal = document.createElement("div");
+  modal.id = "admin-order-detail-modal";
+  modal.className = "modal-backdrop order-detail-modal";
+  modal.setAttribute("aria-hidden", "true");
+  modal.innerHTML = `
+    <div class="purchase-modal order-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-order-detail-title">
+      <button class="modal-close" type="button" aria-label="关闭订单详情"></button>
+      <div class="modal-head">
+        <p class="eyebrow">Operations Detail</p>
+        <h2 id="admin-order-detail-title">订单完整链路</h2>
+        <p>汇总订单、电子票、支付、退款、风险、事件和日志。</p>
+      </div>
+      <div class="order-detail-body"></div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.addEventListener("click", event => {
+    if (event.target === modal) {
+      closeDetailModal(modal);
+    }
+  });
+  modal.querySelector(".modal-close").addEventListener("click", () => closeDetailModal(modal));
+  return modal;
+}
+
+function openDetailModal(modal) {
+  modal.classList.add("show");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+}
+
+function closeDetailModal(modal) {
+  modal.classList.remove("show");
+  modal.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("modal-open");
+  if (modal.id === "admin-order-detail-modal") {
+    state.activeAdminDetailOrderId = null;
+  }
+}
+
+function buildOrderQueryPath() {
+  const params = new URLSearchParams();
+  appendParam(params, "userId", elements.orderUserId.value);
+  appendParam(params, "status", elements.orderStatus.value);
+  appendParam(params, "orderNo", elements.orderNo.value);
+  appendParam(params, "fromDate", elements.orderFromDate.value);
+  appendParam(params, "toDate", elements.orderToDate.value);
+  params.set("page", String(state.orderPage.page));
+  params.set("size", String(state.orderPage.size));
+  return `/orders?${params.toString()}`;
+}
+
+function appendParam(params, key, value) {
+  const normalized = String(value || "").trim();
+  if (normalized) {
+    params.set(key, normalized);
+  }
+}
+
+function renderOrderPagination() {
+  const totalPages = Math.max(1, state.orderPage.totalPages || 0);
+  const currentPage = Math.min((state.orderPage.page || 0) + 1, totalPages);
+  elements.orderPageInfo.textContent = `第 ${currentPage} / ${totalPages} 页，共 ${state.orderPage.totalElements || 0} 条`;
+  elements.prevOrders.disabled = Boolean(state.orderPage.first);
+  elements.nextOrders.disabled = Boolean(state.orderPage.last);
+}
+
+async function changeOrderPage(offset) {
+  const nextPage = Math.max(0, state.orderPage.page + offset);
+  if (nextPage === state.orderPage.page) {
+    return;
+  }
+  state.orderPage.page = nextPage;
+  await loadOrdersPage();
+}
+
+async function resetOrderFilters() {
+  elements.orderUserId.value = "1001";
+  elements.orderStatus.value = "";
+  elements.orderNo.value = "";
+  elements.orderFromDate.value = "";
+  elements.orderToDate.value = "";
+  state.orderPage.page = 0;
+  await loadOrdersPage();
+}
+
+function renderOrderActions(order) {
+  if (order.status === "PENDING_PAYMENT") {
+    return `
+      <div class="inline-actions">
+        <button class="secondary-button compact-button" type="button" data-create-payment="${order.id}">流水</button>
+        <button class="secondary-button compact-button" type="button" data-pay="${order.id}">支付</button>
+        <button class="danger-button compact-button" type="button" data-close-order="${order.id}">关闭</button>
+      </div>
+    `;
+  }
+  if (order.status === "PAID") {
+    return `<button class="danger-button" type="button" data-refund="${order.id}">退票</button>`;
+  }
+  return "-";
+}
+
+async function payOrder(orderId) {
+  try {
+    const order = await request(`/orders/${orderId}/pay`, { method: "POST" });
+    showToast(order.status === "PAID" ? "支付成功，已触发风控校验" : "订单已超时关闭，库存已释放");
+    await refreshAdminFlow(orderId);
+  } catch (error) {
+    showToast(error.message || "支付失败");
+  }
+}
+
+async function closeOrder(orderId) {
+  try {
+    await request(`/orders/${orderId}/close`, { method: "POST" });
+    showToast("订单已关闭，库存已释放");
+    await refreshAdminFlow(orderId);
+  } catch (error) {
+    showToast(error.message || "关闭订单失败");
+  }
+}
+
+async function refundOrder(orderId) {
+  try {
+    await request(`/orders/${orderId}/refund`, { method: "POST" });
+    elements.refundOrderId.value = orderId;
+    showToast("退票成功，库存已释放，退款流水已创建");
+    await refreshAdminFlow(orderId);
+  } catch (error) {
+    showToast(error.message || "退票失败");
+  }
+}
+
+async function createPaymentFromInput() {
+  const orderId = elements.paymentOrderId.value;
+  if (!orderId) {
+    showToast("请输入待支付订单 ID");
+    return;
+  }
+  await createPayment(orderId);
+}
+
+async function createPayment(orderId) {
+  try {
+    const payment = await request("/payments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        orderId: Number(orderId),
+        requestId: generatePaymentRequestId(orderId),
+      }),
+    });
+    elements.paymentOrderId.value = payment.orderId;
+    showToast("支付流水已创建：" + payment.paymentNo);
+    state.paymentPage.page = 0;
+    await refreshAdminFlow(payment.orderId);
+  } catch (error) {
+    showToast(error.message || "创建支付流水失败");
+  }
+}
+
+async function loadPayments() {
+  state.paymentPage.page = 0;
+  await loadPaymentsPage();
+}
+
+async function loadPaymentsPage() {
+  try {
+    const page = await request(buildPaymentQueryPath());
+    state.paymentPage = {
+      page: page.page,
+      size: page.size,
+      totalPages: page.totalPages,
+      totalElements: page.totalElements,
+      first: page.first,
+      last: page.last,
+    };
+    renderPayments(page.content || []);
+    renderPaymentPagination();
+  } catch (error) {
+    elements.paymentResults.innerHTML = tableEmpty(9, "无法获取支付流水");
+    renderPaymentPagination();
+  }
+}
+
+function buildPaymentQueryPath() {
+  const params = new URLSearchParams();
+  appendParam(params, "orderId", elements.paymentOrderId.value);
+  appendParam(params, "status", elements.paymentStatus.value);
+  appendParam(params, "paymentNo", elements.paymentNoFilter.value);
+  params.set("page", String(state.paymentPage.page));
+  params.set("size", String(state.paymentPage.size));
+  return `/payments?${params.toString()}`;
+}
+
+function renderPayments(payments) {
+  if (payments.length === 0) {
+    elements.paymentResults.innerHTML = tableEmpty(9, "暂无支付流水");
+    return;
+  }
+  elements.paymentResults.innerHTML = payments
+    .map(payment => `
+      <tr>
+        <td><strong>${payment.paymentNo}</strong></td>
+        <td>${payment.orderNo}<br><span class="muted-text">#${payment.orderId}</span></td>
+        <td>${payment.userId}</td>
+        <td><span class="money">¥${payment.amount}</span></td>
+        <td><span class="status ${paymentStatusClass(payment.status)}">${paymentStatusText(payment.status)}</span></td>
+        <td>${payment.channel}</td>
+        <td>${formatDateTime(payment.createdAt)}</td>
+        <td>${formatDateTime(payment.paidAt) || "-"}</td>
+        <td>${renderPaymentActions(payment)}</td>
+      </tr>
+    `)
+    .join("");
+
+  document.querySelectorAll("[data-payment-success]").forEach(button => {
+    button.addEventListener("click", () => callbackPayment(button.dataset.paymentSuccess, true));
+  });
+  document.querySelectorAll("[data-payment-fail]").forEach(button => {
+    button.addEventListener("click", () => callbackPayment(button.dataset.paymentFail, false));
+  });
+}
+
+function renderPaymentActions(payment) {
+  if (payment.status !== "PENDING") {
+    return "-";
+  }
+  return `
+    <div class="inline-actions">
+      <button class="secondary-button compact-button" type="button" data-payment-success="${payment.paymentNo}">成功回调</button>
+      <button class="danger-button compact-button" type="button" data-payment-fail="${payment.paymentNo}">失败回调</button>
+    </div>
+  `;
+}
+
+async function callbackPayment(paymentNo, success) {
+  try {
+    const payment = await request("/payments/callback/mock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        paymentNo,
+        callbackRequestId: generateCallbackRequestId(paymentNo, success),
+        channelPaymentNo: success ? generateChannelPaymentNo(paymentNo) : "",
+        success,
+        message: success ? "mock payment success" : "mock payment failed",
+      }),
+    });
+    showToast(success ? "支付成功回调已处理" : "支付失败回调已处理");
+    elements.paymentOrderId.value = payment.orderId;
+    await refreshAdminFlow(payment.orderId);
+  } catch (error) {
+    showToast(error.message || "支付回调失败");
+  }
+}
+
+async function loadRefunds() {
+  state.refundPage.page = 0;
+  await loadRefundsPage();
+}
+
+async function loadRefundsPage() {
+  try {
+    const page = await request(buildRefundQueryPath());
+    state.refundPage = {
+      page: page.page,
+      size: page.size,
+      totalPages: page.totalPages,
+      totalElements: page.totalElements,
+      first: page.first,
+      last: page.last,
+    };
+    renderRefunds(page.content || []);
+    renderRefundPagination();
+  } catch (error) {
+    elements.refundResults.innerHTML = tableEmpty(10, "无法获取退款流水");
+    renderRefundPagination();
+  }
+}
+
+function buildRefundQueryPath() {
+  const params = new URLSearchParams();
+  appendParam(params, "orderId", elements.refundOrderId.value);
+  appendParam(params, "status", elements.refundStatus.value);
+  appendParam(params, "refundNo", elements.refundNoFilter.value);
+  params.set("page", String(state.refundPage.page));
+  params.set("size", String(state.refundPage.size));
+  return `/refunds?${params.toString()}`;
+}
+
+function renderRefunds(refunds) {
+  if (refunds.length === 0) {
+    elements.refundResults.innerHTML = tableEmpty(10, "暂无退款流水");
+    return;
+  }
+  elements.refundResults.innerHTML = refunds
+    .map(refund => `
+      <tr>
+        <td><strong>${refund.refundNo}</strong></td>
+        <td>${refund.orderNo}<br><span class="muted-text">#${refund.orderId}</span></td>
+        <td>${refund.paymentNo || "-"}</td>
+        <td>${refund.userId}</td>
+        <td><span class="money">¥${refund.amount}</span></td>
+        <td><span class="status ${refundStatusClass(refund.status)}">${refundStatusText(refund.status)}</span></td>
+        <td>${refund.channelRefundNo || "-"}</td>
+        <td>${formatDateTime(refund.createdAt)}</td>
+        <td>${formatDateTime(refund.refundedAt) || "-"}</td>
+        <td>${renderRefundActions(refund)}</td>
+      </tr>
+    `)
+    .join("");
+
+  document.querySelectorAll("[data-refund-success]").forEach(button => {
+    button.addEventListener("click", () => callbackRefund(button.dataset.refundSuccess, true));
+  });
+  document.querySelectorAll("[data-refund-fail]").forEach(button => {
+    button.addEventListener("click", () => callbackRefund(button.dataset.refundFail, false));
+  });
+}
+
+function renderRefundActions(refund) {
+  if (refund.status !== "PENDING") {
+    return "-";
+  }
+  return `
+    <div class="inline-actions">
+      <button class="secondary-button compact-button" type="button" data-refund-success="${refund.refundNo}">成功回调</button>
+      <button class="danger-button compact-button" type="button" data-refund-fail="${refund.refundNo}">失败回调</button>
+    </div>
+  `;
+}
+
+async function callbackRefund(refundNo, success) {
+  try {
+    const refund = await request("/refunds/callback/mock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        refundNo,
+        callbackRequestId: generateRefundCallbackRequestId(refundNo, success),
+        channelRefundNo: success ? generateChannelRefundNo(refundNo) : "",
+        success,
+        message: success ? "mock refund success" : "mock refund failed",
+      }),
+    });
+    showToast(success ? "退款成功回调已处理" : "退款失败回调已处理");
+    elements.refundOrderId.value = refund.orderId;
+    await refreshAdminFlow(refund.orderId);
+  } catch (error) {
+    showToast(error.message || "退款回调失败");
+  }
+}
+
+function renderRefundPagination() {
+  const totalPages = Math.max(1, state.refundPage.totalPages || 0);
+  const currentPage = Math.min((state.refundPage.page || 0) + 1, totalPages);
+  elements.refundPageInfo.textContent = `第 ${currentPage} / ${totalPages} 页，共 ${state.refundPage.totalElements || 0} 条`;
+  elements.prevRefunds.disabled = Boolean(state.refundPage.first);
+  elements.nextRefunds.disabled = Boolean(state.refundPage.last);
+}
+
+async function changeRefundPage(offset) {
+  const nextPage = Math.max(0, state.refundPage.page + offset);
+  if (nextPage === state.refundPage.page) {
+    return;
+  }
+  state.refundPage.page = nextPage;
+  await loadRefundsPage();
+}
+
+async function resetRefundFilters() {
+  elements.refundOrderId.value = "";
+  elements.refundStatus.value = "";
+  elements.refundNoFilter.value = "";
+  state.refundPage.page = 0;
+  await loadRefundsPage();
+}
+
+async function loadTicketChanges() {
+  state.ticketChangePage.page = 0;
+  await loadTicketChangesPage();
+}
+
+async function loadTicketChangesPage() {
+  try {
+    const page = await request(buildTicketChangeQueryPath());
+    state.ticketChangePage = {
+      page: page.page,
+      size: page.size,
+      totalPages: page.totalPages,
+      totalElements: page.totalElements,
+      first: page.first,
+      last: page.last,
+    };
+    renderTicketChanges(page.content || []);
+    renderTicketChangePagination();
+  } catch (error) {
+    elements.ticketChangeResults.innerHTML = tableEmpty(9, error.message || "无法获取改签记录");
+    renderTicketChangePagination();
+  }
+}
+
+function buildTicketChangeQueryPath() {
+  const params = new URLSearchParams();
+  appendParam(params, "status", elements.ticketChangeStatus.value);
+  appendParam(params, "changeNo", elements.ticketChangeNo.value);
+  appendParam(params, "userId", elements.ticketChangeUserId.value);
+  params.set("page", String(state.ticketChangePage.page));
+  params.set("size", String(state.ticketChangePage.size));
+  return `/ticket-changes?${params.toString()}`;
+}
+
+function renderTicketChanges(changes) {
+  if (changes.length === 0) {
+    elements.ticketChangeResults.innerHTML = tableEmpty(9, "暂无改签记录");
+    return;
+  }
+  elements.ticketChangeResults.innerHTML = changes
+    .map(change => `
+      <tr>
+        <td><strong>${escapeHtml(change.changeNo)}</strong></td>
+        <td>${change.userId || "-"}</td>
+        <td>${escapeHtml(change.originalOrderNo || "-")}<br><span class="muted-text">${escapeHtml(change.originalTrainNo || "-")} / ${escapeHtml(change.originalTicketNo || "-")}</span></td>
+        <td>${escapeHtml(change.newOrderNo || "-")}<br><span class="muted-text">${escapeHtml(change.newTrainNo || "-")} / ${escapeHtml(change.newTicketNo || "-")}</span></td>
+        <td><span class="money">${formatSignedAmount(change.priceDifference)}</span><br><span class="muted-text">新票 ¥${formatAmount(change.newAmount)}</span></td>
+        <td><span class="status ${changeStatusClass(change.status)}">${changeStatusText(change.status)}</span></td>
+        <td>${formatDateTime(change.createdAt) || "-"}</td>
+        <td>${formatDateTime(change.completedAt) || "-"}</td>
+        <td>${escapeHtml(change.failureReason || change.reason || "-")}</td>
+      </tr>
+    `)
+    .join("");
+}
+
+async function loadAdminWorkbench() {
+  try {
+    const summary = await request("/dashboard/workbench");
+    renderAdminWorkbench(summary);
+  } catch (error) {
+    renderAdminWorkbench(null);
+  }
+}
+
+function renderAdminWorkbench(summary) {
+  if (!elements.adminWorkbenchSummary || !elements.adminWorkbenchList) {
+    return;
+  }
+  if (!summary) {
+    elements.adminWorkbenchSummary.innerHTML = "";
+    elements.adminWorkbenchList.innerHTML = emptyItem("无法获取异常工作台数据");
+    return;
+  }
+  const cards = [
+    { label: "支付失败", value: summary.failedPaymentCount || 0, target: "payments", status: "FAILED", tone: "danger" },
+    { label: "退款待处理", value: summary.pendingRefundCount || 0, target: "refunds", status: "PENDING", tone: "warn" },
+    { label: "退款失败", value: summary.failedRefundCount || 0, target: "refunds", status: "FAILED", tone: "danger" },
+    { label: "改签待支付", value: summary.pendingChangeCount || 0, target: "ticket-changes", status: "PENDING_PAYMENT", tone: "warn" },
+    { label: "改签失败", value: summary.failedChangeCount || 0, target: "ticket-changes", status: "FAILED", tone: "danger" },
+    { label: "待处置风险", value: summary.pendingRiskCount || 0, target: "risks", status: "PENDING", tone: "danger" },
+    { label: "事件失败", value: summary.failedOutboxCount || 0, target: "outbox", status: "FAILED", tone: "warn" },
+    { label: "未读通知", value: summary.unreadNotificationCount || 0, target: "notifications", status: "UNREAD", tone: "info" },
+  ];
+  elements.adminWorkbenchSummary.innerHTML = cards
+    .map(card => `
+      <button class="ops-workbench-card ${card.tone}" type="button" data-workbench-target="${card.target}" data-workbench-status="${card.status}">
+        <span>${card.label}</span>
+        <strong>${card.value}</strong>
+      </button>
+    `)
+    .join("");
+  elements.adminWorkbenchSummary.querySelectorAll(".ops-workbench-card strong").forEach(valueElement => {
+    animateNumber(valueElement, Number(valueElement.textContent || 0));
+  });
+  const items = summary.exceptionItems || [];
+  if (items.length === 0) {
+    elements.adminWorkbenchList.innerHTML = emptyItem("暂无需要处置的异常交易");
+  } else {
+    elements.adminWorkbenchList.innerHTML = items
+      .map(item => `
+        <div class="ops-workbench-item ${item.severity || "medium"}">
+          <div>
+            <div class="workbench-item-title">
+              <strong>${escapeHtml(item.title || item.type)}</strong>
+              <span>${statusLikeText(item.status)}</span>
+            </div>
+            <p>${escapeHtml(item.description || "")}</p>
+            <small>${escapeHtml(item.orderNo || item.businessId || "-")} · ${formatDateTime(item.createdAt)}</small>
+          </div>
+          <button class="ghost-button tiny-button" type="button"
+                  data-workbench-action="${escapeHtml(item.actionTarget || "")}"
+                  data-workbench-status="${escapeHtml(item.status || "")}"
+                  data-workbench-order="${escapeHtml(item.orderId || "")}">
+            ${escapeHtml(actionTargetText(item.actionLabel || "查看"))}
+          </button>
+        </div>
+      `)
+      .join("");
+  }
+  elements.adminWorkbenchSummary.querySelectorAll("[data-workbench-target]").forEach(button => {
+    button.addEventListener("click", () => openWorkbenchTarget(button.dataset.workbenchTarget, button.dataset.workbenchStatus));
+  });
+  elements.adminWorkbenchList.querySelectorAll("[data-workbench-action]").forEach(button => {
+    button.addEventListener("click", () => {
+      if (button.dataset.workbenchOrder) {
+        openAdminOrderDetail(button.dataset.workbenchOrder);
+        return;
+      }
+      openWorkbenchTarget(button.dataset.workbenchAction, button.dataset.workbenchStatus);
+    });
+  });
+}
+
+function renderTicketChangePagination() {
+  const totalPages = Math.max(1, state.ticketChangePage.totalPages || 0);
+  const currentPage = Math.min((state.ticketChangePage.page || 0) + 1, totalPages);
+  elements.ticketChangePageInfo.textContent = `第 ${currentPage} / ${totalPages} 页，共 ${state.ticketChangePage.totalElements || 0} 条`;
+  elements.prevTicketChanges.disabled = Boolean(state.ticketChangePage.first);
+  elements.nextTicketChanges.disabled = Boolean(state.ticketChangePage.last);
+}
+
+async function changeTicketChangePage(offset) {
+  const nextPage = Math.max(0, state.ticketChangePage.page + offset);
+  if (nextPage === state.ticketChangePage.page) {
+    return;
+  }
+  state.ticketChangePage.page = nextPage;
+  await loadTicketChangesPage();
+}
+
+async function resetTicketChangeFilters() {
+  elements.ticketChangeStatus.value = "";
+  elements.ticketChangeNo.value = "";
+  elements.ticketChangeUserId.value = "";
+  state.ticketChangePage.page = 0;
+  await loadTicketChangesPage();
+}
+
+async function loadOutboxEvents() {
+  state.outboxPage.page = 0;
+  await loadOutboxSummary();
+  await loadOutboxEventsPage();
+}
+
+async function loadOutboxSummary() {
+  try {
+    const summary = await request("/outbox-events/summary");
+    renderOutboxSummary(summary);
+  } catch (error) {
+    renderOutboxSummary(null);
+  }
+}
+
+async function loadOutboxEventsPage() {
+  try {
+    const page = await request(buildOutboxQueryPath());
+    state.outboxPage = {
+      page: page.page,
+      size: page.size,
+      totalPages: page.totalPages,
+      totalElements: page.totalElements,
+      first: page.first,
+      last: page.last,
+    };
+    renderOutboxEvents(page.content || []);
+    renderOutboxPagination();
+  } catch (error) {
+    elements.outboxResults.innerHTML = tableEmpty(9, error.message || "无法获取事件数据");
+    renderOutboxPagination();
+  }
+}
+
+function buildOutboxQueryPath() {
+  const params = new URLSearchParams();
+  appendParam(params, "status", elements.outboxStatus.value);
+  appendParam(params, "eventType", elements.outboxEventType.value);
+  params.set("page", String(state.outboxPage.page));
+  params.set("size", String(state.outboxPage.size));
+  return `/outbox-events?${params.toString()}`;
+}
+
+function renderOutboxEvents(events) {
+  if (events.length === 0) {
+    elements.outboxResults.innerHTML = tableEmpty(9, "暂无事件记录");
+    return;
+  }
+  elements.outboxResults.innerHTML = events
+    .map(event => `
+      <tr>
+        <td><span class="muted-text">${event.eventId}</span></td>
+        <td>${eventTypeText(event.eventType)}</td>
+        <td>${aggregateTypeText(event.aggregateType)}<br><span class="muted-text">${businessIdText(event.aggregateId)}</span></td>
+        <td><span class="status ${outboxStatusClass(event.status)}">${outboxStatusText(event.status)}</span></td>
+        <td>${event.retryCount}/${event.maxRetryCount}</td>
+        <td>${formatDateTime(event.createdAt)}</td>
+        <td>${formatDateTime(event.processedAt) || "-"}</td>
+        <td>${event.lastError ? escapeHtml(event.lastError) : "-"}</td>
+        <td>${event.status === "FAILED" ? `<button class="secondary-button compact-button" data-outbox-retry="${event.id}" type="button">重试</button>` : "-"}</td>
+      </tr>
+    `)
+    .join("");
+  elements.outboxResults.querySelectorAll("[data-outbox-retry]").forEach(button => {
+    button.addEventListener("click", () => retryOutboxEvent(button.dataset.outboxRetry));
+  });
+}
+
+async function dispatchOutboxEvents() {
+  try {
+    const response = await request("/outbox-events/dispatch", { method: "POST" });
+    showToast(`已派发 ${response.processedCount || 0} 个事件`);
+    await loadOutboxEventsPage();
+    await loadOutboxSummary();
+    await loadLogs();
+  } catch (error) {
+    showToast(error.message || "事件派发失败");
+  }
+}
+
+async function retryOutboxEvent(id) {
+  try {
+    await request(`/outbox-events/${id}/retry`, { method: "POST" });
+    showToast("事件已重新入队");
+    await loadOutboxEventsPage();
+    await loadOutboxSummary();
+  } catch (error) {
+    showToast(error.message || "事件重试失败");
+  }
+}
+
+async function retryFailedOutboxEvents() {
+  try {
+    const response = await request("/outbox-events/retry-failed", { method: "POST" });
+    showToast(`已重新入队 ${response.enqueuedCount || 0} 个失败事件`);
+    await loadOutboxEventsPage();
+    await loadOutboxSummary();
+  } catch (error) {
+    showToast(error.message || "批量重试失败");
+  }
+}
+
+function renderOutboxSummary(summary) {
+  const empty = {
+    totalCount: 0,
+    pendingCount: 0,
+    processingCount: 0,
+    doneCount: 0,
+    failedCount: 0,
+    failureRate: 0,
+    backlogCount: 0,
+    eventCountByType: {},
+    eventCountByStatus: {},
+  };
+  const data = summary || empty;
+  animateNumber(elements.outboxSummaryTotal, data.totalCount || 0);
+  animateNumber(elements.outboxSummaryPending, data.pendingCount || 0);
+  animateNumber(elements.outboxSummaryProcessing, data.processingCount || 0);
+  animateNumber(elements.outboxSummaryDone, data.doneCount || 0);
+  animateNumber(elements.outboxSummaryFailed, data.failedCount || 0);
+  animateNumber(elements.outboxSummaryFailureRate, Number(data.failureRate || 0), { formatter: formatPercent });
+  animateNumber(elements.outboxSummaryBacklog, data.backlogCount || 0);
+  elements.outboxTypeSummary.innerHTML = renderSummaryMap(data.eventCountByType || {}, eventTypeText);
+  elements.outboxStatusSummary.innerHTML = renderSummaryMap(data.eventCountByStatus || {}, outboxStatusText);
+}
+
+function renderSummaryMap(map, labelFormatter = value => value) {
+  const entries = Object.entries(map);
+  if (entries.length === 0) {
+    return `<span class="muted-text">暂无数据</span>`;
+  }
+  return entries
+    .map(([key, value]) => `<span><strong>${escapeHtml(labelFormatter(key))}</strong>${value}</span>`)
+    .join("");
+}
+
+function renderOutboxPagination() {
+  const totalPages = Math.max(1, state.outboxPage.totalPages || 0);
+  const currentPage = Math.min((state.outboxPage.page || 0) + 1, totalPages);
+  elements.outboxPageInfo.textContent = `第 ${currentPage} / ${totalPages} 页，共 ${state.outboxPage.totalElements || 0} 条`;
+  elements.prevOutbox.disabled = Boolean(state.outboxPage.first);
+  elements.nextOutbox.disabled = Boolean(state.outboxPage.last);
+}
+
+async function changeOutboxPage(offset) {
+  const nextPage = Math.max(0, state.outboxPage.page + offset);
+  if (nextPage === state.outboxPage.page) {
+    return;
+  }
+  state.outboxPage.page = nextPage;
+  await loadOutboxEventsPage();
+}
+
+function setupGlobalSearchTypePicker() {
+  if (!elements.globalSearchTypes || !elements.globalSearchTypeTrigger || !elements.globalSearchTypeMenu) {
+    return;
+  }
+  elements.globalSearchTypeMenu.innerHTML = Array.from(elements.globalSearchTypes.options || [])
+    .map(option => `
+      <button class="multi-select-option" type="button" role="option" aria-selected="${option.selected ? "true" : "false"}" data-global-search-type="${escapeHtml(option.value)}">
+        <span class="option-check" aria-hidden="true"></span>
+        <span>${escapeHtml(option.textContent)}</span>
+      </button>
+    `)
+    .join("");
+  elements.globalSearchTypeTrigger.addEventListener("click", () => {
+    setGlobalSearchTypeMenuOpen(elements.globalSearchTypeMenu.hidden);
+  });
+  elements.globalSearchTypeMenu.querySelectorAll("[data-global-search-type]").forEach(button => {
+    button.addEventListener("click", () => {
+      const option = Array.from(elements.globalSearchTypes.options || [])
+        .find(item => item.value === button.dataset.globalSearchType);
+      if (!option) {
+        return;
+      }
+      option.selected = !option.selected;
+      updateGlobalSearchTypePicker();
+    });
+  });
+  document.addEventListener("click", event => {
+    if (!event.target.closest("[data-multi-select='global-search-types']")) {
+      setGlobalSearchTypeMenuOpen(false);
+    }
+  });
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape") {
+      setGlobalSearchTypeMenuOpen(false);
+    }
+  });
+  updateGlobalSearchTypePicker();
+}
+
+function setGlobalSearchTypeMenuOpen(open) {
+  if (!elements.globalSearchTypeMenu || !elements.globalSearchTypeTrigger) {
+    return;
+  }
+  elements.globalSearchTypeMenu.hidden = !open;
+  elements.globalSearchTypeTrigger.setAttribute("aria-expanded", String(open));
+}
+
+function updateGlobalSearchTypePicker() {
+  if (!elements.globalSearchTypes || !elements.globalSearchTypeLabel || !elements.globalSearchTypeMenu) {
+    return;
+  }
+  const selected = Array.from(elements.globalSearchTypes.selectedOptions || []);
+  elements.globalSearchTypeLabel.textContent = selected.length === 0
+    ? "全部类型"
+    : selected.length === 1
+      ? selected[0].textContent
+      : `已选 ${selected.length} 类`;
+  elements.globalSearchTypeMenu.querySelectorAll("[data-global-search-type]").forEach(button => {
+    const option = Array.from(elements.globalSearchTypes.options || [])
+      .find(item => item.value === button.dataset.globalSearchType);
+    button.setAttribute("aria-selected", option && option.selected ? "true" : "false");
+  });
+}
+
+async function runGlobalSearch() {
+  const keyword = (elements.globalSearchKeyword.value || "").trim();
+  if (keyword.length < 2) {
+    elements.globalSearchInfo.textContent = "请输入至少 2 个字符进行查询";
+    elements.globalSearchResults.innerHTML = emptyItem("关键词太短，请输入订单号、票号、流水号或乘车人等信息");
+    return;
+  }
+  state.globalSearch.loading = true;
+  state.globalSearch.lastKeyword = keyword;
+  elements.globalSearchInfo.textContent = "综合查询中...";
+  elements.globalSearchResults.innerHTML = `<div class="search-loading">正在检索订单、票据、流水、通知和事件链路...</div>`;
+  try {
+    const result = await request(buildGlobalSearchPath(keyword));
+    renderGlobalSearch(result);
+  } catch (error) {
+    elements.globalSearchInfo.textContent = "综合查询失败";
+    elements.globalSearchResults.innerHTML = emptyItem(error.message || "综合查询失败，请稍后重试");
+  } finally {
+    state.globalSearch.loading = false;
+  }
+}
+
+function buildGlobalSearchPath(keyword) {
+  const params = new URLSearchParams();
+  params.set("keyword", keyword);
+  const selectedTypes = Array.from(elements.globalSearchTypes.selectedOptions || [])
+    .map(option => option.value)
+    .filter(Boolean);
+  if (selectedTypes.length > 0) {
+    params.set("types", selectedTypes.join(","));
+  }
+  appendParam(params, "limitPerType", elements.globalSearchLimit.value);
+  if (elements.globalSearchTrace.checked) {
+    params.set("includeTrace", "true");
+  }
+  return `/search?${params.toString()}`;
+}
+
+function renderGlobalSearch(result) {
+  const groups = result.groups || [];
+  const totalCount = result.totalCount || 0;
+  elements.globalSearchInfo.textContent = `关键词“${result.keyword || state.globalSearch.lastKeyword}”共命中 ${totalCount} 条记录`;
+  if (totalCount === 0) {
+    elements.globalSearchResults.innerHTML = emptyItem("未找到相关记录，请更换订单号、票号或流水号再试");
+    return;
+  }
+  elements.globalSearchResults.innerHTML = groups
+    .filter(group => (group.items || []).length > 0)
+    .map(group => `
+      <article class="search-result-group">
+        <div class="search-group-head">
+          <div>
+            <p class="eyebrow">${businessTypeText(group.type)}</p>
+            <h3>${escapeHtml(group.typeName || businessTypeText(group.type) || "结果")}</h3>
+          </div>
+          <span>${group.count || 0} 条</span>
+        </div>
+        <div class="search-result-list">
+          ${(group.items || []).map(renderGlobalSearchItem).join("")}
+        </div>
+      </article>
+    `)
+    .join("");
+  elements.globalSearchResults.querySelectorAll("[data-search-order-detail]").forEach(button => {
+    button.addEventListener("click", () => openAdminOrderDetail(button.dataset.searchOrderDetail));
+  });
+}
+
+function renderGlobalSearchItem(item) {
+  const fields = (item.matchedFields || []).map(field => `<span>${escapeHtml(field)}</span>`).join("");
+  const trace = (item.trace || []).length > 0
+    ? `<div class="search-trace">${item.trace.map(text => `<span>${escapeHtml(text)}</span>`).join("")}</div>`
+    : "";
+  const action = item.orderId
+    ? `<button class="secondary-button compact-button" type="button" data-search-order-detail="${escapeHtml(String(item.orderId))}">打开订单详情</button>`
+    : `<span class="muted-text">暂无可打开链路</span>`;
+  return `
+    <div class="search-result-card">
+      <div class="search-result-main">
+        <div>
+          <strong>${escapeHtml(item.title || "-")}</strong>
+          <p>${escapeHtml(item.subtitle || "-")}</p>
+        </div>
+        <span class="status ${searchStatusClass(item.status)}">${statusLikeText(item.status || item.businessType)}</span>
+      </div>
+      <div class="search-result-meta">
+        <span>${escapeHtml(item.orderNo || item.ticketNo || item.paymentNo || item.refundNo || item.changeNo || item.notificationNo || item.businessId || "-")}</span>
+        <span>${formatDateTime(item.createdAt) || "-"}</span>
+      </div>
+      <div class="search-matched-fields">${fields || "<span>相关记录</span>"}</div>
+      ${trace}
+      <div class="search-result-actions">${action}</div>
+    </div>
+  `;
+}
+
+function clearGlobalSearch() {
+  elements.globalSearchKeyword.value = "";
+  Array.from(elements.globalSearchTypes.options || []).forEach(option => {
+    option.selected = false;
+  });
+  updateGlobalSearchTypePicker();
+  elements.globalSearchLimit.value = "5";
+  elements.globalSearchTrace.checked = false;
+  elements.globalSearchInfo.textContent = "请输入至少 2 个字符进行查询";
+  elements.globalSearchResults.innerHTML = "";
+}
+
+function searchStatusClass(value) {
+  const status = String(value || "").toUpperCase();
+  if (["SUCCESS", "DONE", "PAID", "ISSUED", "READ", "CLOSED"].includes(status)) {
+    return "success";
+  }
+  if (["FAILED", "REFUND_FAILED", "CANCELLED"].includes(status)) {
+    return "danger";
+  }
+  if (["PENDING", "PENDING_PAYMENT", "UNREAD", "PROCESSING"].includes(status)) {
+    return "pending";
+  }
+  return "neutral";
+}
+
+async function loadNotifications() {
+  state.notificationPage.page = 0;
+  await Promise.all([loadNotificationSummary(), loadNotificationsPage()]);
+}
+
+async function loadNotificationSummary() {
+  try {
+    const summary = await request("/notifications/summary");
+    renderNotificationSummary(summary);
+  } catch (error) {
+    renderNotificationSummary(null);
+  }
+}
+
+async function loadNotificationsPage() {
+  try {
+    const page = await request(buildNotificationQueryPath());
+    state.notificationPage = {
+      page: page.page,
+      size: page.size,
+      totalPages: page.totalPages,
+      totalElements: page.totalElements,
+      first: page.first,
+      last: page.last,
+    };
+    renderNotifications(page.content || []);
+    renderNotificationPagination();
+  } catch (error) {
+    elements.notificationResults.innerHTML = tableEmpty(9, error.message || "无法获取通知数据");
+    renderNotificationPagination();
+  }
+}
+
+function buildNotificationQueryPath() {
+  const params = new URLSearchParams();
+  appendParam(params, "status", elements.notificationStatus.value);
+  appendParam(params, "type", elements.notificationType.value);
+  appendParam(params, "orderNo", elements.notificationOrderNo.value);
+  appendParam(params, "userId", elements.notificationUserId.value);
+  params.set("page", String(state.notificationPage.page));
+  params.set("size", String(state.notificationPage.size));
+  return `/notifications?${params.toString()}`;
+}
+
+function renderNotifications(notifications) {
+  if (notifications.length === 0) {
+    elements.notificationResults.innerHTML = tableEmpty(9, "暂无站内通知");
+    return;
+  }
+  elements.notificationResults.innerHTML = notifications
+    .map(notification => `
+      <tr>
+        <td><span class="muted-text">${escapeHtml(notification.notificationNo)}</span></td>
+        <td>${notification.userId}</td>
+        <td>${notificationTypeText(notification.type)}</td>
+        <td><strong>${escapeHtml(notificationTitleText(notification))}</strong><br><span class="muted-text">${escapeHtml(notificationContentText(notification))}</span></td>
+        <td><span class="status ${notificationStatusClass(notification.status)}">${notificationStatusText(notification.status)}</span></td>
+        <td>${businessTypeText(notification.businessType)}<br><span class="muted-text">${businessIdText(notification.businessId)}</span></td>
+        <td>${escapeHtml(notification.orderNo || "-")}</td>
+        <td>${formatDateTime(notification.createdAt) || "-"}</td>
+        <td>
+          ${notification.orderId
+            ? `<button class="secondary-button compact-button" type="button" data-notification-order-detail="${notification.orderId}">打开链路</button>`
+            : `<span class="muted-text">${actionTargetText(notification.actionTarget)}</span>`}
+        </td>
+      </tr>
+    `)
+    .join("");
+  elements.notificationResults.querySelectorAll("[data-notification-order-detail]").forEach(button => {
+    button.addEventListener("click", () => openAdminOrderDetail(button.dataset.notificationOrderDetail));
+  });
+}
+
+function renderNotificationSummary(summary) {
+  const data = summary || {
+    totalCount: 0,
+    unreadCount: 0,
+    readCount: 0,
+    countByType: {},
+    countByStatus: {},
+    latestCreatedAt: null,
+  };
+  animateNumber(elements.notificationSummaryTotal, data.totalCount || 0);
+  animateNumber(elements.notificationSummaryUnread, data.unreadCount || 0);
+  animateNumber(elements.notificationSummaryRead, data.readCount || 0);
+  elements.notificationSummaryLatest.textContent = formatDateTime(data.latestCreatedAt) || "-";
+  elements.notificationTypeSummary.innerHTML = renderSummaryMap(data.countByType || {}, notificationTypeText);
+  elements.notificationStatusSummary.innerHTML = renderSummaryMap(data.countByStatus || {}, notificationStatusText);
+  renderStatChart(elements.notificationTypeChart, data.countByType || {}, notificationTypeText);
+  renderStatChart(elements.notificationStatusChart, data.countByStatus || {}, notificationStatusText);
+  renderStatTable(elements.notificationTypeTable, data.countByType || {}, notificationTypeText);
+  renderStatTable(elements.notificationStatusTable, data.countByStatus || {}, notificationStatusText);
+}
+
+function renderNotificationPagination() {
+  const totalPages = Math.max(1, state.notificationPage.totalPages || 0);
+  const currentPage = Math.min((state.notificationPage.page || 0) + 1, totalPages);
+  elements.notificationPageInfo.textContent = `第 ${currentPage} / ${totalPages} 页，共 ${state.notificationPage.totalElements || 0} 条`;
+  elements.prevNotifications.disabled = Boolean(state.notificationPage.first);
+  elements.nextNotifications.disabled = Boolean(state.notificationPage.last);
+}
+
+async function changeNotificationPage(offset) {
+  const nextPage = Math.max(0, state.notificationPage.page + offset);
+  if (nextPage === state.notificationPage.page) {
+    return;
+  }
+  state.notificationPage.page = nextPage;
+  await loadNotificationsPage();
+}
+
+function renderPaymentPagination() {
+  const totalPages = Math.max(1, state.paymentPage.totalPages || 0);
+  const currentPage = Math.min((state.paymentPage.page || 0) + 1, totalPages);
+  elements.paymentPageInfo.textContent = `第 ${currentPage} / ${totalPages} 页，共 ${state.paymentPage.totalElements || 0} 条`;
+  elements.prevPayments.disabled = Boolean(state.paymentPage.first);
+  elements.nextPayments.disabled = Boolean(state.paymentPage.last);
+}
+
+async function changePaymentPage(offset) {
+  const nextPage = Math.max(0, state.paymentPage.page + offset);
+  if (nextPage === state.paymentPage.page) {
+    return;
+  }
+  state.paymentPage.page = nextPage;
+  await loadPaymentsPage();
+}
+
+async function loadRisks() {
+  state.riskPage.page = 0;
+  await loadRisksPage();
+}
+
+async function loadRisksPage() {
+  try {
+    const page = await request(buildRiskQueryPath());
+    state.riskPage = {
+      page: page.page,
+      size: page.size,
+      totalPages: page.totalPages,
+      totalElements: page.totalElements,
+      first: page.first,
+      last: page.last,
+    };
+    const risks = page.content || [];
+    if (risks.length === 0) {
+      elements.riskList.innerHTML = emptyItem("暂无风险事件");
+      renderRiskPagination();
+      return;
+    }
+    state.openRiskHistoryId = null;
+    elements.riskList.innerHTML = risks
+      .map(risk => `
+        <div class="event-item">
+          <div class="event-header">
+            <strong>${riskLevelText(risk.riskLevel)} · ${riskTypeText(risk.riskType)}</strong>
+            <span class="handled-pill ${riskStatusClass(risk.status)}">${riskStatusText(risk.status)}</span>
+          </div>
+          <span>用户：${risk.userId} / 订单：${risk.orderNo || "-"} / 场景：${riskSceneText(risk.scene)}</span>
+          <span>${escapeHtml(risk.reason)}</span>
+          <span>处理人：${risk.handledBy || "-"} / 处理时间：${formatDateTime(risk.handledAt) || "-"}</span>
+          <span>备注：${risk.handleRemark ? escapeHtml(risk.handleRemark) : "-"}</span>
+          <div class="risk-actions">
+            ${renderRiskActionControls(risk)}
+            <button class="secondary-button compact-button" type="button" data-risk-history="${risk.id}">处置历史</button>
+          </div>
+          <div id="risk-history-${risk.id}" class="risk-history"></div>
+        </div>
+      `)
+      .join("");
+
+    document.querySelectorAll("[data-handle-risk]").forEach(button => {
+      button.addEventListener("click", () => handleRisk(button.dataset.handleRisk));
+    });
+    document.querySelectorAll("[data-risk-history]").forEach(button => {
+      button.addEventListener("click", () => toggleRiskHistory(button.dataset.riskHistory));
+    });
+    renderRiskPagination();
+  } catch (error) {
+    elements.riskList.innerHTML = emptyItem("无法获取风险事件");
+    renderRiskPagination();
+  }
+}
+
+function buildRiskQueryPath() {
+  const params = new URLSearchParams();
+  if (elements.riskStatus.value) {
+    params.set("status", elements.riskStatus.value);
+  }
+  if (elements.riskScene.value) {
+    params.set("scene", elements.riskScene.value);
+  }
+  if (elements.riskUserId.value) {
+    params.set("userId", elements.riskUserId.value);
+  }
+  if (elements.riskOrderNo.value.trim()) {
+    params.set("orderNo", elements.riskOrderNo.value.trim());
+  }
+  if (elements.riskFromDate.value) {
+    params.set("fromDate", elements.riskFromDate.value);
+  }
+  if (elements.riskToDate.value) {
+    params.set("toDate", elements.riskToDate.value);
+  }
+  params.set("page", state.riskPage.page);
+  params.set("size", state.riskPage.size);
+  const query = params.toString();
+  return query ? `/risks?${query}` : "/risks";
+}
+
+function renderRiskPagination() {
+  const totalPages = Math.max(1, state.riskPage.totalPages || 0);
+  const currentPage = Math.min((state.riskPage.page || 0) + 1, totalPages);
+  elements.riskPageInfo.textContent = `第 ${currentPage} / ${totalPages} 页，共 ${state.riskPage.totalElements || 0} 条`;
+  elements.prevRisks.disabled = Boolean(state.riskPage.first);
+  elements.nextRisks.disabled = Boolean(state.riskPage.last);
+}
+
+async function changeRiskPage(offset) {
+  const nextPage = Math.max(0, state.riskPage.page + offset);
+  if (nextPage === state.riskPage.page) {
+    return;
+  }
+  state.riskPage.page = nextPage;
+  await loadRisksPage();
+}
+
+async function resetRiskFilters() {
+  elements.riskStatus.value = "";
+  elements.riskScene.value = "";
+  elements.riskUserId.value = "";
+  elements.riskOrderNo.value = "";
+  elements.riskFromDate.value = "";
+  elements.riskToDate.value = "";
+  state.riskPage.page = 0;
+  await loadRisksPage();
+}
+
+async function loadRiskSummary() {
+  try {
+    const summary = await request("/risks/summary");
+    animateNumber(elements.riskSummaryTotal, summary.totalRiskCount || 0);
+    animateNumber(elements.riskSummaryPending, summary.pendingRiskCount || 0);
+    animateNumber(elements.riskSummaryConfirmed, summary.confirmedRiskCount || 0);
+    animateNumber(elements.riskSummaryFalsePositive, summary.falsePositiveRiskCount || 0);
+    animateNumber(elements.riskSummaryClosed, summary.closedRiskCount || 0);
+    animateNumber(elements.riskSummaryCompletionRate, Number(summary.handlingCompletionRate || 0), { formatter: formatPercent });
+    animateNumber(elements.riskSummaryFalsePositiveRate, Number(summary.falsePositiveRate || 0), { formatter: formatPercent });
+    animateNumber(elements.riskSummaryConfirmedRate, Number(summary.confirmedRate || 0), { formatter: formatPercent });
+    renderRiskBreakdown(elements.riskStatusSummary, summary.riskCountByStatus || {}, riskStatusText);
+    renderRiskBreakdown(elements.riskSceneSummary, summary.riskCountByScene || {}, riskSceneText);
+  } catch (error) {
+    elements.riskStatusSummary.innerHTML = emptyItem("无法获取状态统计");
+    elements.riskSceneSummary.innerHTML = emptyItem("无法获取场景统计");
+  }
+}
+
+function renderRiskBreakdown(container, data, labelFormatter) {
+  const entries = Object.entries(data);
+  if (entries.length === 0) {
+    container.innerHTML = emptyItem("暂无统计");
+    return;
+  }
+  container.innerHTML = entries
+    .map(([key, value]) => `
+      <div class="event-item compact-event">
+        <strong>${labelFormatter(key)}</strong>
+        <span>${value || 0} 个事件</span>
+      </div>
+    `)
+    .join("");
+}
+
+function renderRiskActionControls(risk) {
+  const options = riskTargetStatuses(risk.status);
+  if (!canHandleRisk() || options.length === 0) {
+    return "";
+  }
+  const optionHtml = options
+    .map(status => `<option value="${status}">${riskStatusText(status)}</option>`)
+    .join("");
+  return `
+    <select class="risk-status-select" data-risk-target-status="${risk.id}" aria-label="处置结果">
+      ${optionHtml}
+    </select>
+    <input class="risk-remark-input" data-risk-remark="${risk.id}" type="text" maxlength="500" placeholder="处置备注">
+    <button class="secondary-button compact-button" type="button" data-handle-risk="${risk.id}">提交处置</button>
+  `;
+}
+
+function riskTargetStatuses(status) {
+  if (status === "PENDING" || !status) {
+    return ["CONFIRMED", "FALSE_POSITIVE", "CLOSED"];
+  }
+  if (status === "CONFIRMED" || status === "FALSE_POSITIVE") {
+    return ["CLOSED"];
+  }
+  return [];
+}
+
+async function handleRisk(riskId) {
+  try {
+    const statusSelect = document.querySelector(`[data-risk-target-status="${riskId}"]`);
+    const remarkInput = document.querySelector(`[data-risk-remark="${riskId}"]`);
+    await request(`/risks/${riskId}/handle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status: statusSelect ? statusSelect.value : "CLOSED",
+        remark: remarkInput ? remarkInput.value : "",
+      }),
+    });
+    showToast("风险事件已处理");
+    await refreshAll();
+  } catch (error) {
+    showToast(error.message || "处理风险事件失败");
+  }
+}
+
+async function toggleRiskHistory(riskId) {
+  if (state.openRiskHistoryId === riskId) {
+    closeRiskHistory(riskId);
+    return;
+  }
+  if (state.openRiskHistoryId) {
+    closeRiskHistory(state.openRiskHistoryId);
+  }
+  await loadRiskHistory(riskId);
+}
+
+function closeRiskHistory(riskId) {
+  const container = document.querySelector(`#risk-history-${riskId}`);
+  const button = document.querySelector(`[data-risk-history="${riskId}"]`);
+  if (container) {
+    container.innerHTML = "";
+    container.classList.remove("open");
+  }
+  if (button) {
+    button.textContent = "处置历史";
+  }
+  if (state.openRiskHistoryId === riskId) {
+    state.openRiskHistoryId = null;
+  }
+}
+
+async function loadRiskHistory(riskId) {
+  const container = document.querySelector(`#risk-history-${riskId}`);
+  const button = document.querySelector(`[data-risk-history="${riskId}"]`);
+  if (!container) {
+    return;
+  }
+  container.classList.add("open");
+  container.innerHTML = `<span class="muted-text">历史加载中...</span>`;
+  if (button) {
+    button.textContent = "收起历史";
+  }
+  state.openRiskHistoryId = riskId;
+  try {
+    const records = await request(`/risks/${riskId}/handle-records`);
+    if (records.length === 0) {
+      container.innerHTML = `
+        <button class="history-close" type="button" data-risk-history-close="${riskId}" aria-label="关闭处置历史"></button>
+        <span class="muted-text">暂无处置历史</span>
+      `;
+      bindRiskHistoryClose(riskId);
+      return;
+    }
+    container.innerHTML = `
+      <button class="history-close" type="button" data-risk-history-close="${riskId}" aria-label="关闭处置历史"></button>
+      ${records
+        .map(record => `
+          <div class="history-row">
+            <strong>${riskStatusText(record.fromStatus)} → ${riskStatusText(record.toStatus)}</strong>
+            <span>${record.operatorName || "-"} / ${formatDateTime(record.operatedAt) || "-"}</span>
+            <span>${record.remark ? escapeHtml(record.remark) : "无备注"}</span>
+          </div>
+        `)
+        .join("")}
+    `;
+    bindRiskHistoryClose(riskId);
+  } catch (error) {
+    container.innerHTML = `
+      <button class="history-close" type="button" data-risk-history-close="${riskId}" aria-label="关闭处置历史"></button>
+      <span class="muted-text">无法获取处置历史</span>
+    `;
+    bindRiskHistoryClose(riskId);
+  }
+}
+
+function bindRiskHistoryClose(riskId) {
+  const closeButton = document.querySelector(`[data-risk-history-close="${riskId}"]`);
+  if (closeButton) {
+    closeButton.addEventListener("click", () => closeRiskHistory(riskId));
+  }
+}
+
+async function loadLogs() {
+  try {
+    state.logs = await request("/logs");
+    state.visibleLogCount = 10;
+    renderLogs();
+  } catch (error) {
+    elements.logList.innerHTML = emptyItem(error.message || "无法获取审计日志");
+    elements.logDisplayInfo.textContent = "日志加载失败";
+    elements.showMoreLogs.disabled = true;
+    elements.collapseLogs.disabled = true;
+  }
+}
+
+function renderLogs() {
+  const logs = state.logs || [];
+  if (logs.length === 0) {
+    elements.logList.innerHTML = emptyItem("暂无审计日志");
+    elements.logDisplayInfo.textContent = "暂无审计日志";
+    elements.showMoreLogs.disabled = true;
+    elements.collapseLogs.disabled = true;
+    return;
+  }
+  const visibleLogs = logs.slice(0, state.visibleLogCount);
+  elements.logList.innerHTML = visibleLogs
+    .map(log => `
+      <div class="event-item">
+        <strong>${operationActionText(log.action)} / ${aggregateTypeText(log.targetType)}</strong>
+        <span>${escapeHtml(log.operator)} · ${formatDateTime(log.createdAt) || "-"}</span>
+        <span>${escapeHtml(log.detail)}</span>
+      </div>
+    `)
+    .join("");
+  const visibleCount = Math.min(state.visibleLogCount, logs.length);
+  elements.logDisplayInfo.textContent = `已显示 ${visibleCount} / ${logs.length} 条`;
+  elements.showMoreLogs.disabled = visibleCount >= logs.length;
+  elements.showMoreLogs.textContent = visibleCount >= logs.length ? "已全部显示" : "展开更多";
+  elements.collapseLogs.disabled = visibleCount <= 10;
+}
+
+function showMoreLogs() {
+  state.visibleLogCount = Math.min((state.visibleLogCount || 10) + 20, state.logs.length);
+  renderLogs();
+}
+
+function collapseLogs() {
+  state.visibleLogCount = 10;
+  renderLogs();
+  document.querySelector("#logs").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function request(path, options = {}, withAuth = true) {
+  const requestOptions = { ...options };
+  requestOptions.headers = { ...(options.headers || {}) };
+  const hasAuthHeader = Boolean(withAuth && state.auth && state.auth.token);
+  if (withAuth && state.auth && state.auth.token) {
+    requestOptions.headers.Authorization = `Bearer ${state.auth.token}`;
+  }
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, requestOptions);
+  } catch (error) {
+    const networkError = new Error("无法连接后端服务，请确认 Spring Boot 后端已启动");
+    networkError.status = 0;
+    networkError.code = "NETWORK_ERROR";
+    throw networkError;
+  }
+  const data = await readResponseBody(response);
+  if (!response.ok) {
+    if (response.status === 401) {
+      if (hasAuthHeader) {
+        handleAuthExpired();
+        const authError = new Error("登录已过期，请重新登录");
+        authError.status = 401;
+        throw authError;
+      }
+      const unauthorizedError = new Error(data.message || "请先登录后再访问该功能");
+      unauthorizedError.status = 401;
+      throw unauthorizedError;
+    }
+    if (response.status === 403) {
+      const forbiddenError = new Error("当前账号权限不足");
+      forbiddenError.status = 403;
+      throw forbiddenError;
+    }
+    if (response.status === 429) {
+      const rateLimitError = new Error("请求过于频繁，请稍后再试");
+      rateLimitError.status = 429;
+      throw rateLimitError;
+    }
+    const requestError = new Error(data.message || `请求失败（${response.status}）`);
+    requestError.status = response.status;
+    throw requestError;
+  }
+  return data;
+}
+
+async function readResponseBody(response) {
+  const text = await response.text();
+  if (!text) {
+    return {};
+  }
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    return { message: text };
+  }
+}
+
+function loadStoredAuth() {
+  try {
+    const stored = localStorage.getItem("railway-auth") || sessionStorage.getItem("railway-auth");
+    return stored ? JSON.parse(stored) : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function clearStoredAuth() {
+  localStorage.removeItem("railway-auth");
+  localStorage.removeItem("railway-token");
+  localStorage.removeItem("token");
+  localStorage.removeItem("auth");
+  sessionStorage.removeItem("railway-auth");
+  sessionStorage.removeItem("railway-token");
+  sessionStorage.removeItem("token");
+  sessionStorage.removeItem("auth");
+}
+
+function handleAuthExpired() {
+  clearStoredAuth();
+  state.auth = null;
+  renderAuthState();
+  if (!state.authExpiredNotified) {
+    state.authExpiredNotified = true;
+    showToast("登录已过期，请重新登录");
+  }
+  const loginScreen = document.querySelector(".login-screen");
+  if (loginScreen) {
+    loginScreen.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+function canHandleRisk() {
+  return state.auth && ["ADMIN", "RISK_OFFICER"].includes(state.auth.role);
+}
+
+function tableEmpty(colspan, message) {
+  return `<tr><td colspan="${colspan}">${message}</td></tr>`;
+}
+
+function emptyItem(message) {
+  return `<div class="event-item"><span>${message}</span></div>`;
+}
+
+function formatTime(value) {
+  return String(value || "").slice(0, 5);
+}
+
+function formatDate(value) {
+  return value ? String(value).slice(0, 10) : "-";
+}
+
+function formatDateTime(value) {
+  return value ? String(value).replace("T", " ").slice(0, 16) : "";
+}
+
+function formatAmount(value) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? number.toFixed(2) : String(value || "-");
+}
+
+function formatSignedAmount(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number) || number === 0) {
+    return "¥0.00";
+  }
+  return `${number > 0 ? "+" : "-"}¥${formatAmount(Math.abs(number))}`;
+}
+
+function formatPercent(value) {
+  const number = Number(value || 0);
+  return `${(number * 100).toFixed(1)}%`;
+}
+
+function animateNumber(element, value, options = {}) {
+  if (!element) {
+    return;
+  }
+  const target = Number(value || 0);
+  const formatter = options.formatter || (current => String(Math.round(current)));
+  const duration = options.duration || 720;
+  const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const previousFrame = numberAnimations.get(element);
+  if (previousFrame) {
+    window.cancelAnimationFrame(previousFrame);
+  }
+  if (reduceMotion || duration <= 0) {
+    element.textContent = formatter(target);
+    return;
+  }
+  const startedAt = performance.now();
+  const tick = now => {
+    const progress = Math.min(1, (now - startedAt) / duration);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    element.textContent = formatter(target * eased);
+    if (progress < 1) {
+      numberAnimations.set(element, window.requestAnimationFrame(tick));
+      return;
+    }
+    element.textContent = formatter(target);
+    numberAnimations.delete(element);
+  };
+  element.textContent = formatter(0);
+  numberAnimations.set(element, window.requestAnimationFrame(tick));
+}
+
+function renderStatChart(container, map, labelFormatter = value => value) {
+  if (!container) {
+    return;
+  }
+  const entries = Object.entries(map)
+    .map(([key, value]) => [key, Number(value || 0)])
+    .filter(([, value]) => value > 0)
+    .sort((left, right) => right[1] - left[1]);
+  if (entries.length === 0) {
+    container.innerHTML = `<div class="chart-empty">暂无数据</div>`;
+    return;
+  }
+  const max = Math.max(...entries.map(([, value]) => value), 1);
+  container.innerHTML = entries
+    .map(([key, value]) => `
+      <div class="mini-bar-row">
+        <div class="mini-bar-meta">
+          <strong>${escapeHtml(labelFormatter(key))}</strong>
+          <span>${value}</span>
+        </div>
+        <div class="bar-track" aria-hidden="true">
+          <span style="--target-width: ${Math.max(8, (value / max) * 100)}%"></span>
+        </div>
+      </div>
+    `)
+    .join("");
+}
+
+function renderStatTable(tbody, map, labelFormatter = value => value) {
+  if (!tbody) {
+    return;
+  }
+  const entries = Object.entries(map)
+    .map(([key, value]) => [key, Number(value || 0)])
+    .filter(([, value]) => value > 0)
+    .sort((left, right) => right[1] - left[1]);
+  if (entries.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="3">暂无数据</td></tr>`;
+    return;
+  }
+  const total = entries.reduce((sum, [, value]) => sum + value, 0);
+  tbody.innerHTML = entries
+    .map(([key, value]) => `
+      <tr>
+        <td>${escapeHtml(labelFormatter(key))}</td>
+        <td>${value}</td>
+        <td>${formatPercent(total ? value / total : 0)}</td>
+      </tr>
+    `)
+    .join("");
+}
+
+function seatTypeText(value) {
+  const map = {
+    SECOND_CLASS: "二等座",
+    FIRST_CLASS: "一等座",
+    BUSINESS_CLASS: "商务座",
+  };
+  return map[value] || value;
+}
+
+function idTypeText(value) {
+  const map = {
+    ID_CARD: "居民身份证",
+    PASSPORT: "护照",
+    OTHER: "其他证件",
+  };
+  return map[value] || value || "-";
+}
+
+function statusText(value) {
+  const map = {
+    PENDING_PAYMENT: "待支付",
+    PAID: "已支付",
+    REFUNDED: "已退票",
+    CLOSED: "已关闭",
+    CANCELLED: "已取消",
+  };
+  return map[value] || humanizeCode(value);
+}
+
+function orderStatusClass(value) {
+  const map = {
+    PENDING_PAYMENT: "pending",
+    REFUNDED: "refunded",
+    CLOSED: "closed",
+    CANCELLED: "closed",
+  };
+  return map[value] || "";
+}
+
+function paymentStatusText(value) {
+  const map = {
+    PENDING: "待支付",
+    SUCCESS: "支付成功",
+    FAILED: "支付失败",
+  };
+  return map[value] || humanizeCode(value);
+}
+
+function paymentStatusClass(value) {
+  const map = {
+    PENDING: "pending",
+    SUCCESS: "",
+    FAILED: "closed",
+  };
+  return map[value] || "";
+}
+
+function refundStatusText(value) {
+  const map = {
+    PENDING: "退款处理中",
+    SUCCESS: "退款成功",
+    FAILED: "退款失败",
+  };
+  return map[value] || humanizeCode(value);
+}
+
+function refundStatusClass(value) {
+  const map = {
+    PENDING: "pending",
+    SUCCESS: "",
+    FAILED: "closed",
+  };
+  return map[value] || "";
+}
+
+function changeStatusText(value) {
+  const map = {
+    PENDING_PAYMENT: "待补差支付",
+    SUCCESS: "改签成功",
+    FAILED: "改签失败",
+    CANCELLED: "已取消",
+  };
+  return map[value] || humanizeCode(value);
+}
+
+function changeStatusClass(value) {
+  const map = {
+    PENDING_PAYMENT: "pending",
+    SUCCESS: "issued",
+    FAILED: "closed",
+    CANCELLED: "closed",
+  };
+  return map[value] || "";
+}
+
+function ticketStatusText(value) {
+  const map = {
+    ISSUED: "有效票",
+    REFUNDED: "已退票",
+    CANCELLED: "已取消",
+  };
+  return map[value] || humanizeCode(value);
+}
+
+function ticketStatusClass(value) {
+  const map = {
+    ISSUED: "issued",
+    REFUNDED: "refunded",
+    CANCELLED: "closed",
+  };
+  return map[value] || "";
+}
+
+function notificationTitleText(notification) {
+  const rawTitle = String(notification && notification.title ? notification.title : "").trim();
+  const map = {
+    "order created": "下单成功",
+    "payment confirmed": "支付成功",
+    "ticket issued": "出票成功",
+    "order closed": "订单已关闭",
+    "order refunded": "退票成功",
+    "refund succeeded": "退款成功",
+    "refund failed": "退款失败",
+    "ticket change created": "已发起改签",
+    "ticket change pending payment": "改签待支付",
+    "ticket change succeeded": "改签成功",
+    "ticket change failed": "改签失败",
+  };
+  return map[rawTitle.toLowerCase()] || notificationTypeText(notification && notification.type) || rawTitle || "-";
+}
+
+function notificationContentText(notification) {
+  const content = String(notification && notification.content ? notification.content : "").trim();
+  if (!content) {
+    return actionTargetText(notification && notification.actionHint);
+  }
+  const directHint = actionTargetText(content);
+  if (directHint !== humanizeCode(content)) {
+    return directHint;
+  }
+  const paymentMatch = content.match(/^Order\s+(\S+)\s+payment succeeded\.\s+Amount\s+([^,]+),\s+paymentNo\s+(\S+)\.?$/i);
+  if (paymentMatch) {
+    return `订单 ${paymentMatch[1]} 已支付成功，金额 ¥${paymentMatch[2]}，支付流水 ${paymentMatch[3]}。`;
+  }
+  const ticketMatch = content.match(/^Ticket\s+(\S+)\s+for train\s+(\S+)\s+(.+?)\s+to\s+(.+?)\s+on\s+([0-9-]+)\s+has been issued\.?$/i);
+  if (ticketMatch) {
+    return `电子票 ${ticketMatch[1]} 已出票，车次 ${ticketMatch[2]}，${ticketMatch[3]} 至 ${ticketMatch[4]}，乘车日期 ${ticketMatch[5]}。`;
+  }
+  const orderMatch = content.match(/^Order\s+(\S+)\s+is pending payment\.\s+Amount\s+([^,]+),\s+payment deadline\s+(.+)\.?$/i);
+  if (orderMatch) {
+    return `订单 ${orderMatch[1]} 已创建，金额 ¥${orderMatch[2]}，请在 ${orderMatch[3]} 前完成支付。`;
+  }
+  const type = notification && notification.type;
+  const orderNo = notification && notification.orderNo ? notification.orderNo : "当前订单";
+  const ticketNo = notification && notification.ticketNo ? notification.ticketNo : "电子票";
+  const fallback = {
+    ORDER_CREATED: `${orderNo} 已创建，请及时完成后续操作。`,
+    PAYMENT_SUCCEEDED: `${orderNo} 已支付成功，电子票状态会同步更新。`,
+    TICKET_ISSUED: `${ticketNo} 已出票，可在电子票夹查看。`,
+    ORDER_CLOSED: `${orderNo} 已关闭。`,
+    ORDER_REFUNDED: `${orderNo} 已退票，退款记录会同步更新。`,
+    REFUND_SUCCEEDED: `${orderNo} 退款已成功。`,
+    REFUND_FAILED: `${orderNo} 退款失败，请稍后查看或联系运营处理。`,
+    TICKET_CHANGE_CREATED: `${orderNo} 已发起改签。`,
+    TICKET_CHANGE_PENDING_PAYMENT: `${orderNo} 改签待支付差额。`,
+    TICKET_CHANGE_SUCCEEDED: `${orderNo} 改签已完成。`,
+    TICKET_CHANGE_FAILED: `${orderNo} 改签失败。`,
+  };
+  return fallback[type] || content;
+}
+
+function riskTypeText(value) {
+  const map = {
+    RAPID_PURCHASE: "短时多次购票",
+    FREQUENT_REFUND: "频繁退票",
+    HIGH_AMOUNT: "高金额订单",
+  };
+  return map[value] || humanizeCode(value);
+}
+
+function riskLevelText(value) {
+  const map = {
+    LOW: "低风险",
+    MEDIUM: "中风险",
+    HIGH: "高风险",
+  };
+  return map[value] || humanizeCode(value);
+}
+
+function riskStatusText(value) {
+  const map = {
+    PENDING: "待处理",
+    CONFIRMED: "已确认风险",
+    FALSE_POSITIVE: "误报",
+    CLOSED: "已关闭",
+  };
+  return map[value] || value || "待处理";
+}
+
+function riskStatusClass(value) {
+  const map = {
+    PENDING: "open",
+    CONFIRMED: "confirmed",
+    FALSE_POSITIVE: "false-positive",
+    CLOSED: "done",
+  };
+  return map[value] || "open";
+}
+
+function riskSceneText(value) {
+  const map = {
+    ORDER_CREATED: "支付成功",
+    ORDER_REFUNDED: "退票后",
+  };
+  return map[value] || "-";
+}
+
+function outboxStatusText(value) {
+  const map = {
+    PENDING: "待处理",
+    PROCESSING: "处理中",
+    DONE: "处理完成",
+    FAILED: "处理失败",
+  };
+  return map[value] || humanizeCode(value);
+}
+
+function outboxStatusClass(value) {
+  const map = {
+    PENDING: "pending",
+    PROCESSING: "pending",
+    DONE: "",
+    FAILED: "closed",
+  };
+  return map[value] || "";
+}
+
+function notificationTypeText(value) {
+  const map = {
+    ORDER_CREATED: "下单提醒",
+    PAYMENT_SUCCEEDED: "支付提醒",
+    TICKET_ISSUED: "出票提醒",
+    ORDER_CLOSED: "关闭提醒",
+    ORDER_REFUNDED: "退票提醒",
+    REFUND_SUCCEEDED: "退款成功",
+    REFUND_FAILED: "退款失败",
+    TICKET_CHANGE_CREATED: "改签提醒",
+    TICKET_CHANGE_PENDING_PAYMENT: "改签待支付",
+    TICKET_CHANGE_SUCCEEDED: "改签成功",
+    TICKET_CHANGE_FAILED: "改签失败",
+    RISK_ALERT: "风险提醒",
+  };
+  return map[value] || humanizeCode(value);
+}
+
+function notificationStatusText(value) {
+  const map = {
+    UNREAD: "未读",
+    READ: "已读",
+  };
+  return map[value] || humanizeCode(value);
+}
+
+function notificationStatusClass(value) {
+  const map = {
+    UNREAD: "pending",
+    READ: "",
+  };
+  return map[value] || "";
+}
+
+function roleText(value) {
+  const map = {
+    ADMIN: "系统管理员",
+    OPERATOR: "运营人员",
+    RISK_OFFICER: "风控专员",
+  };
+  return map[value] || humanizeCode(value);
+}
+
+function eventTypeText(value) {
+  const map = {
+    ORDER_PAID: "订单已支付",
+    ORDER_REFUNDED: "订单已退票",
+    ORDER_CLOSED: "订单已关闭",
+    PAYMENT_SUCCEEDED: "支付成功",
+    PAYMENT_FAILED: "支付失败",
+    REFUND_CREATED: "退款已创建",
+    REFUND_SUCCEEDED: "退款成功",
+    REFUND_FAILED: "退款失败",
+    RISK_EVENT_CREATED: "风险事件已创建",
+    RISK_EVENT_HANDLED: "风险事件已处置",
+    TICKET_ISSUED: "电子票已出票",
+    TICKET_INVALIDATED: "电子票已失效",
+    TICKET_CHANGE_CREATED: "已发起改签",
+    TICKET_CHANGE_PENDING_PAYMENT: "改签待支付",
+    TICKET_CHANGE_SUCCEEDED: "改签成功",
+    TICKET_CHANGE_FAILED: "改签失败",
+    NOTIFICATION_CREATED: "消息已创建",
+  };
+  return map[value] || humanizeCode(value);
+}
+
+function aggregateTypeText(value) {
+  const map = {
+    ORDER: "订单",
+    PAYMENT: "支付",
+    REFUND: "退款",
+    RISK: "风险",
+    TICKET: "电子票",
+    TICKET_CHANGE: "改签",
+    NOTIFICATION: "消息",
+    OUTBOX: "事件",
+    LOG: "日志",
+  };
+  return map[value] || humanizeCode(value);
+}
+
+function businessTypeText(value) {
+  return aggregateTypeText(value);
+}
+
+function businessIdText(value) {
+  if (!value) {
+    return "-";
+  }
+  const text = String(value);
+  const prefixes = {
+    "ORDER:": "订单：",
+    "PAYMENT:": "支付：",
+    "REFUND:": "退款：",
+    "TICKET:": "电子票：",
+    "TICKET_CHANGE:": "改签单：",
+    "NOTIFICATION:": "消息：",
+    "RISK:": "风险：",
+  };
+  const prefix = Object.keys(prefixes).find(item => text.startsWith(item));
+  return escapeHtml(prefix ? `${prefixes[prefix]}${text.slice(prefix.length)}` : text);
+}
+
+function chainNodeTypeText(value) {
+  return aggregateTypeText(value);
+}
+
+function actionTargetText(value) {
+  const map = {
+    ORDER_DETAIL: "订单详情",
+    ORDER_PAYMENT: "订单支付",
+    CHANGE_PAYMENT: "改签补差",
+    REFUNDS: "退款记录",
+    NOTIFICATIONS: "消息中心",
+    payments: "支付流水",
+    refunds: "退款流水",
+    risks: "风险事件",
+    outbox: "事件中心",
+    notifications: "通知中心",
+  };
+  const phraseMap = {
+    "view order": "查看订单",
+    "view ticket": "查看电子票",
+    "go to payment": "去支付",
+    "view refund": "查看退款",
+    "refund -> order_detail": "查看退款相关订单",
+    "payment -> order_detail": "查看支付相关订单",
+    "ticket_change -> order_detail": "查看改签相关订单",
+    "payment succeeded. check the order and ticket timeline": "支付已完成，请查看订单详情和电子票。",
+    "the e-ticket is ready in your ticket wallet": "电子票已生成，可在电子票夹查看。",
+    "this order is waiting for payment": "订单待支付，请尽快完成支付。",
+    "refund succeeded. check the refund record": "退款已成功，请查看退款记录。",
+    "the order has been closed": "订单已关闭。",
+    "order closed. check the order detail": "订单已关闭，请查看订单详情。",
+    "ticket issued. check the ticket wallet": "电子票已生成，可在电子票夹查看。",
+    "refund failed. check the refund record": "退款失败，请查看退款记录。",
+  };
+  const text = String(value || "").trim();
+  const normalized = text.toLowerCase().replace(/\s+/g, " ").replace(/\.+$/g, "");
+  return map[value] || phraseMap[normalized] || humanizeCode(value);
+}
+
+function operationActionText(value) {
+  const map = {
+    LOGIN: "登录",
+    CREATE_ORDER: "创建订单",
+    CREATE_PAYMENT: "创建支付",
+    PAY_ORDER: "支付订单",
+    PAYMENT_CALLBACK: "支付回调",
+    CLOSE_ORDER: "关闭订单",
+    REFUND_ORDER: "退票",
+    REFUND_CALLBACK: "退款回调",
+    HANDLE_RISK_EVENT: "处置风险",
+    OUTBOX_DISPATCH: "事件派发",
+    CACHE_CLEAR: "清理缓存",
+    TICKET_ISSUED: "电子票出票",
+    TICKET_CHANGE_CREATED: "发起改签",
+    TICKET_CHANGE_PAID: "改签支付",
+    TICKET_CHANGE_CANCELLED: "取消改签",
+    NOTIFICATION_CREATED: "创建通知",
+  };
+  return map[value] || humanizeCode(value);
+}
+
+function statusLikeText(value) {
+  return statusText(value);
+}
+
+function humanizeCode(value) {
+  if (!value) {
+    return "-";
+  }
+  const map = {
+    SUCCESS: "成功",
+    FAILED: "失败",
+    PENDING: "待处理",
+    PROCESSING: "处理中",
+    DONE: "已完成",
+    UNREAD: "未读",
+    READ: "已读",
+    ORDER: "订单",
+    PAYMENT: "支付",
+    REFUND: "退款",
+    RISK: "风险",
+    TICKET: "电子票",
+    TICKET_CHANGE: "改签",
+    NOTIFICATION: "消息",
+    OUTBOX: "事件",
+  };
+  return map[value] || String(value).replace(/_/g, " ");
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function generateRequestId() {
+  if (window.crypto && window.crypto.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+  return `REQ-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function generatePaymentRequestId(orderId) {
+  return `PAYREQ-${orderId}-${generateRequestId()}`;
+}
+
+function generateShortCallbackNonce() {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+  }
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function generateCallbackRequestId(paymentNo, success) {
+  const tag = success ? "ok" : "fail";
+  return `${paymentNo}-cb-${tag}-${generateShortCallbackNonce()}`;
+}
+
+function generateRefundCallbackRequestId(refundNo, success) {
+  const tag = success ? "ok" : "fail";
+  return `${refundNo}-cb-${tag}-${generateShortCallbackNonce()}`;
+}
+
+function generateChannelPaymentNo(paymentNo) {
+  return `CH-${paymentNo}-${Date.now()}`;
+}
+
+function generateChannelRefundNo(refundNo) {
+  return `CH-${refundNo}-${Date.now()}`;
+}
+
+function setupDashboardDrilldowns() {
+  bindMetricCard(elements.totalOrders, () => openOrdersByStatus("", "全部订单"));
+  bindMetricCard(elements.pendingOrders, () => openOrdersByStatus("PENDING_PAYMENT", "待支付订单"));
+  bindMetricCard(elements.paidOrders, () => openOrdersByStatus("PAID", "已支付订单"));
+  bindMetricCard(elements.closedOrders, () => openOrdersByStatus("CLOSED", "已关闭订单"));
+  bindMetricCard(elements.refundedOrders, () => openOrdersByStatus("REFUNDED", "退票订单"));
+  bindMetricCard(elements.refundRate, () => openRefunds("", "退款流水"));
+  bindMetricCard(elements.riskRate, () => openRisksByStatus("", "风险运营报表"));
+  bindMetricCard(elements.openRisks, () => openRisksByStatus("PENDING", "未处理风险"));
+  bindMetricCard(elements.outboxSummaryPending, () => openOutboxByStatus("PENDING", "待处理事件"));
+  bindMetricCard(elements.outboxSummaryProcessing, () => openOutboxByStatus("PROCESSING", "处理中事件"));
+  bindMetricCard(elements.outboxSummaryFailed, () => openOutboxByStatus("FAILED", "失败事件"));
+  bindMetricCard(elements.outboxSummaryBacklog, () => openOutboxByStatus("", "事件积压概览"));
+}
+
+function bindMetricCard(valueElement, handler) {
+  if (!valueElement) {
+    return;
+  }
+  const card = valueElement.closest(".metric");
+  if (!card) {
+    return;
+  }
+  card.classList.add("clickable-card");
+  card.setAttribute("role", "button");
+  card.setAttribute("tabindex", "0");
+  card.addEventListener("click", handler);
+  card.addEventListener("keydown", event => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handler();
+    }
+  });
+}
+
+async function openOrdersByStatus(status, label) {
+  elements.orderUserId.value = "";
+  elements.orderStatus.value = status;
+  elements.orderNo.value = "";
+  elements.orderFromDate.value = "";
+  elements.orderToDate.value = "";
+  state.orderPage.page = 0;
+  navigateToSection("orders");
+  await loadOrdersPage();
+  showToast(`已切换到${label}`);
+}
+
+async function openRisksByStatus(status, label) {
+  elements.riskStatus.value = status;
+  elements.riskScene.value = "";
+  elements.riskUserId.value = "";
+  elements.riskOrderNo.value = "";
+  elements.riskFromDate.value = "";
+  elements.riskToDate.value = "";
+  state.riskPage.page = 0;
+  navigateToSection("risks");
+  await Promise.all([loadRisksPage(), loadRiskSummary()]);
+  showToast(`已切换到${label}`);
+}
+
+async function openRefunds(status, label) {
+  elements.refundStatus.value = status;
+  elements.refundNoFilter.value = "";
+  elements.refundOrderId.value = "";
+  state.refundPage.page = 0;
+  navigateToSection("refunds");
+  await loadRefundsPage();
+  showToast(`已切换到${label}`);
+}
+
+async function openPaymentsByStatus(status, label) {
+  elements.paymentStatus.value = status;
+  elements.paymentNoFilter.value = "";
+  elements.paymentOrderId.value = "";
+  state.paymentPage.page = 0;
+  navigateToSection("payments");
+  await loadPaymentsPage();
+  showToast(`已切换到${label}`);
+}
+
+async function openPaymentsByOrder(orderId) {
+  elements.paymentStatus.value = "";
+  elements.paymentNoFilter.value = "";
+  elements.paymentOrderId.value = orderId || "";
+  state.paymentPage.page = 0;
+  navigateToSection("payments");
+  await loadPaymentsPage();
+  showToast("已定位到该订单的支付流水");
+}
+
+async function openTicketChangesByStatus(status, label) {
+  elements.ticketChangeStatus.value = status;
+  elements.ticketChangeNo.value = "";
+  elements.ticketChangeUserId.value = "";
+  state.ticketChangePage.page = 0;
+  navigateToSection("ticket-changes");
+  await loadTicketChangesPage();
+  showToast(`已切换到${label}`);
+}
+
+async function openTicketChangeByNo(changeNo) {
+  elements.ticketChangeStatus.value = "";
+  elements.ticketChangeNo.value = changeNo || "";
+  elements.ticketChangeUserId.value = "";
+  state.ticketChangePage.page = 0;
+  navigateToSection("ticket-changes");
+  await loadTicketChangesPage();
+  showToast("已定位到关联改签记录");
+}
+
+async function openOutboxByStatus(status, label) {
+  elements.outboxStatus.value = status;
+  elements.outboxEventType.value = "";
+  state.outboxPage.page = 0;
+  navigateToSection("outbox");
+  await Promise.all([loadOutboxSummary(), loadOutboxEventsPage()]);
+  showToast(`已切换到${label}`);
+}
+
+async function openRefundsByOrder(orderId) {
+  elements.refundStatus.value = "";
+  elements.refundNoFilter.value = "";
+  elements.refundOrderId.value = orderId || "";
+  state.refundPage.page = 0;
+  navigateToSection("refunds");
+  await loadRefundsPage();
+  showToast("已定位到该订单的退款流水");
+}
+
+async function openRisksByOrder(orderNo) {
+  elements.riskStatus.value = "";
+  elements.riskScene.value = "";
+  elements.riskUserId.value = "";
+  elements.riskOrderNo.value = orderNo || "";
+  elements.riskFromDate.value = "";
+  elements.riskToDate.value = "";
+  state.riskPage.page = 0;
+  navigateToSection("risks");
+  await Promise.all([loadRisksPage(), loadRiskSummary()]);
+  showToast("已定位到该订单的风险事件");
+}
+
+async function openNotificationsByStatus(status, label) {
+  elements.notificationStatus.value = status;
+  elements.notificationType.value = "";
+  elements.notificationOrderNo.value = "";
+  elements.notificationUserId.value = "";
+  state.notificationPage.page = 0;
+  navigateToSection("notifications");
+  await Promise.all([loadNotificationSummary(), loadNotificationsPage()]);
+  showToast(`已切换到${label}`);
+}
+
+async function openNotificationsByOrder(orderNo) {
+  elements.notificationStatus.value = "";
+  elements.notificationType.value = "";
+  elements.notificationOrderNo.value = orderNo || "";
+  elements.notificationUserId.value = "";
+  state.notificationPage.page = 0;
+  navigateToSection("notifications");
+  await Promise.all([loadNotificationSummary(), loadNotificationsPage()]);
+  showToast("已定位到该订单的通知记录");
+}
+
+function openAdminDetailTarget(button) {
+  const target = button.dataset.adminDetailTarget;
+  const orderId = button.dataset.adminDetailOrder;
+  const orderNo = button.dataset.adminDetailOrderNo;
+  const changeNo = button.dataset.adminDetailChange;
+  switch (target) {
+    case "payments":
+      openPaymentsByOrder(orderId);
+      break;
+    case "refunds":
+      openRefundsByOrder(orderId);
+      break;
+    case "ticket-changes":
+      openTicketChangeByNo(changeNo);
+      break;
+    case "risks":
+      openRisksByOrder(orderNo);
+      break;
+    case "outbox":
+      openOutboxByStatus("", "关联事件记录");
+      break;
+    case "notifications":
+      openNotificationsByOrder(orderNo);
+      break;
+    default:
+      navigateToSection("dashboard");
+      break;
+  }
+}
+
+function openWorkbenchTarget(target, status) {
+  switch (target) {
+    case "payments":
+      openPaymentsByStatus(status || "", "支付异常");
+      break;
+    case "refunds":
+      openRefunds(status || "", "退款异常");
+      break;
+    case "ticket-changes":
+      openTicketChangesByStatus(status || "", "改签追踪");
+      break;
+    case "risks":
+      openRisksByStatus(status || "PENDING", "风险处置");
+      break;
+    case "outbox":
+      openOutboxByStatus(status || "FAILED", "事件中心");
+      break;
+    case "notifications":
+      openNotificationsByStatus(status || "UNREAD", "通知中心");
+      break;
+    default:
+      navigateToSection("dashboard");
+      break;
+  }
+}
+
+function navigateToSection(sectionId) {
+  const section = document.querySelector(`#${sectionId}`);
+  if (!section) {
+    return;
+  }
+  if (window.location.hash !== `#${sectionId}`) {
+    window.location.hash = sectionId;
+  }
+  section.scrollIntoView({ behavior: "smooth", block: "start" });
+  section.classList.remove("section-highlight");
+  window.setTimeout(() => section.classList.add("section-highlight"), 20);
+  window.setTimeout(() => section.classList.remove("section-highlight"), 1400);
+  setActiveNav(sectionId);
+}
+
+function showToast(message) {
+  elements.toast.textContent = message;
+  elements.toast.classList.add("show");
+  window.setTimeout(() => {
+    elements.toast.classList.remove("show");
+  }, 2600);
+}
+
+function scrollToInitialHash() {
+  if (!window.location.hash) {
+    return;
+  }
+  const target = document.querySelector(window.location.hash);
+  if (target) {
+    target.scrollIntoView({ block: "start" });
+  }
+}
+
+function applyCaptureMode() {
+  const capture = new URLSearchParams(window.location.search).get("capture");
+  if (["dashboard", "orders", "risks"].includes(capture)) {
+    document.body.dataset.capture = capture;
+  }
+}
+
+function setupNavigation() {
+  document.querySelectorAll(".nav a").forEach(link => {
+    link.addEventListener("click", () => {
+      const sectionId = link.getAttribute("href").replace("#", "");
+      setActiveNav(sectionId);
+    });
+  });
+  updateActiveNav();
+}
+
+function setupScrollSpy() {
+  const sections = Array.from(document.querySelectorAll(".main > .section"));
+  if (!("IntersectionObserver" in window)) {
+    window.addEventListener("scroll", () => {
+      const current = sections
+        .map(section => ({ id: section.id, top: Math.abs(section.getBoundingClientRect().top) }))
+        .sort((left, right) => left.top - right.top)[0];
+      if (current) {
+        setActiveNav(current.id);
+      }
+    }, { passive: true });
+    return;
+  }
+  if (state.navObserver) {
+    state.navObserver.disconnect();
+  }
+  state.navObserver = new IntersectionObserver(entries => {
+    const visible = entries
+      .filter(entry => entry.isIntersecting)
+      .sort((left, right) => left.boundingClientRect.top - right.boundingClientRect.top);
+    if (visible.length > 0) {
+      setActiveNav(visible[0].target.id);
+    }
+  }, {
+    root: null,
+    rootMargin: "-18% 0px -58% 0px",
+    threshold: [0.08, 0.2, 0.45],
+  });
+  sections.forEach(section => state.navObserver.observe(section));
+}
+
+function updateActiveNav() {
+  const sectionId = (window.location.hash || "#dashboard").replace("#", "");
+  setActiveNav(sectionId);
+}
+
+function setActiveNav(sectionId) {
+  if (!sectionId || state.activeSectionId === sectionId) {
+    return;
+  }
+  state.activeSectionId = sectionId;
+  document.querySelectorAll(".nav a").forEach(link => {
+    link.classList.toggle("active", link.getAttribute("href") === `#${sectionId}`);
+  });
+}
